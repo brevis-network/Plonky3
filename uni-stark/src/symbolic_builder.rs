@@ -1,7 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, PairBuilder};
+use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, PairBuilder, TwoPhaseAirBuilder};
 use p3_field::Field;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_util::log2_ceil_usize;
@@ -58,7 +58,8 @@ where
     F: Field,
     A: Air<SymbolicAirBuilder<F>>,
 {
-    let mut builder = SymbolicAirBuilder::new(preprocessed_width, air.width(), num_public_values);
+    let mut builder =
+        SymbolicAirBuilder::new(preprocessed_width, air.width(), air.phase2_width(), num_public_values);
     air.eval(&mut builder);
     builder.constraints()
 }
@@ -68,12 +69,14 @@ where
 pub struct SymbolicAirBuilder<F: Field> {
     preprocessed: RowMajorMatrix<SymbolicVariable<F>>,
     main: RowMajorMatrix<SymbolicVariable<F>>,
+    phase2: RowMajorMatrix<SymbolicVariable<F>>,
     public_values: Vec<SymbolicVariable<F>>,
+    verifier_randomness: SymbolicVariable<F>,
     constraints: Vec<SymbolicExpression<F>>,
 }
 
 impl<F: Field> SymbolicAirBuilder<F> {
-    pub(crate) fn new(preprocessed_width: usize, width: usize, num_public_values: usize) -> Self {
+    pub(crate) fn new(preprocessed_width: usize, width: usize, phase2_width: usize, num_public_values: usize) -> Self {
         let prep_values = [0, 1]
             .into_iter()
             .flat_map(|offset| {
@@ -87,13 +90,22 @@ impl<F: Field> SymbolicAirBuilder<F> {
                 (0..width).map(move |index| SymbolicVariable::new(Entry::Main { offset }, index))
             })
             .collect();
+        let phase2_values = [0, 1]
+            .into_iter()
+            .flat_map(|offset| {
+                (0..phase2_width)
+                    .map(move |index| SymbolicVariable::new(Entry::Phase2 { offset }, index))
+            })
+            .collect();
         let public_values = (0..num_public_values)
             .map(move |index| SymbolicVariable::new(Entry::Public, index))
             .collect();
         Self {
             preprocessed: RowMajorMatrix::new(prep_values, preprocessed_width),
             main: RowMajorMatrix::new(main_values, width),
+            phase2: RowMajorMatrix::new(phase2_values, phase2_width),
             public_values,
+            verifier_randomness: SymbolicVariable::new(Entry::Challenge, 0),
             constraints: vec![],
         }
     }
@@ -144,5 +156,17 @@ impl<F: Field> AirBuilderWithPublicValues for SymbolicAirBuilder<F> {
 impl<F: Field> PairBuilder for SymbolicAirBuilder<F> {
     fn preprocessed(&self) -> Self::M {
         self.preprocessed.clone()
+    }
+}
+
+impl<F: Field> TwoPhaseAirBuilder for SymbolicAirBuilder<F> {
+    type RandomVar = Self::Var;
+
+    fn phase2(&self) -> Self::M {
+        self.phase2.clone()
+    }
+
+    fn verifier_randomness(&self) -> &Self::RandomVar {
+        &self.verifier_randomness
     }
 }

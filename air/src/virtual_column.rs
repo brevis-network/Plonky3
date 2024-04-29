@@ -16,13 +16,15 @@ pub struct VirtualPairCol<F: Field> {
 pub enum PairCol {
     Preprocessed(usize),
     Main(usize),
+    Phase2(usize),
 }
 
 impl PairCol {
-    pub const fn get<T: Copy>(&self, preprocessed: &[T], main: &[T]) -> T {
+    pub const fn get<T: Copy>(&self, preprocessed: &[T], main: &[T], phase2: &[T]) -> T {
         match self {
             PairCol::Preprocessed(i) => preprocessed[*i],
             PairCol::Main(i) => main[*i],
+            PairCol::Phase2(i) => phase2[*i],
         }
     }
 }
@@ -50,6 +52,16 @@ impl<F: Field> VirtualPairCol<F> {
             column_weights
                 .into_iter()
                 .map(|(i, w)| (PairCol::Main(i), w))
+                .collect(),
+            constant,
+        )
+    }
+
+    pub fn new_phase2(column_weights: Vec<(usize, F)>, constant: F) -> Self {
+        Self::new(
+            column_weights
+                .into_iter()
+                .map(|(i, w)| (PairCol::Phase2(i), w))
                 .collect(),
             constant,
         )
@@ -87,9 +99,21 @@ impl<F: Field> VirtualPairCol<F> {
     }
 
     #[must_use]
+    pub fn single_phase2(column: usize) -> Self {
+        Self::single(PairCol::Phase2(column))
+    }
+
+
+    #[must_use]
     pub fn sum_main(columns: Vec<usize>) -> Self {
         let column_weights = columns.into_iter().map(|col| (col, F::one())).collect();
         Self::new_main(column_weights, F::zero())
+    }
+
+    #[must_use]
+    pub fn sum_phase2(columns: Vec<usize>) -> Self {
+        let column_weights = columns.into_iter().map(|col| (col, F::one())).collect();
+        Self::new_phase2(column_weights, F::zero())
     }
 
     #[must_use]
@@ -110,15 +134,19 @@ impl<F: Field> VirtualPairCol<F> {
         Self::new_main(vec![(a_col, F::one()), (b_col, F::neg_one())], F::zero())
     }
 
-    pub fn apply<Expr, Var>(&self, preprocessed: &[Var], main: &[Var]) -> Expr
-    where
+    #[must_use]
+    pub fn diff_phase2(a_col: usize, b_col: usize) -> Self {
+        Self::new_phase2(vec![(a_col, F::one()), (b_col, F::neg_one())], F::zero())
+    }
+
+    pub fn apply<Expr, Var>(&self, preprocessed: &[Var], main: &[Var], phase2: &[Var]) -> Expr    where
         F: Into<Expr>,
         Expr: AbstractField + Mul<F, Output = Expr>,
         Var: Into<Expr> + Copy,
     {
         let mut result = self.constant.into();
         for (column, weight) in self.column_weights.iter() {
-            result += column.get(preprocessed, main).into() * *weight;
+            result += column.get(preprocessed, main, phase2).into() * *weight;
         }
         result
     }

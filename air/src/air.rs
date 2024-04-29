@@ -9,6 +9,16 @@ pub trait BaseAir<F>: Sync {
     /// The number of columns (a.k.a. registers) in this AIR.
     fn width(&self) -> usize;
 
+    fn phase2_width(&self) -> usize {
+        // always insert one column even if no phase2 is needed for an air. this allows a unified process in prover
+        // TODO make this 0
+        1
+    }
+
+    fn num_public_values(&self) -> usize {
+        0
+    }
+
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<F>> {
         None
     }
@@ -147,15 +157,6 @@ pub trait ExtensionBuilder: AirBuilder {
     }
 }
 
-pub trait PermutationAirBuilder: ExtensionBuilder {
-    type MP: Matrix<Self::VarEF>;
-
-    type RandomVar: Into<Self::ExprEF> + Copy;
-
-    fn permutation(&self) -> Self::MP;
-
-    fn permutation_randomness(&self) -> &[Self::RandomVar];
-}
 
 #[derive(Debug)]
 pub struct FilteredAirBuilder<'a, AB: AirBuilder> {
@@ -204,16 +205,33 @@ impl<'a, AB: ExtensionBuilder> ExtensionBuilder for FilteredAirBuilder<'a, AB> {
     }
 }
 
+pub trait PermutationAirBuilder: ExtensionBuilder {
+    type MP: Matrix<Self::VarEF>;
+    fn permutation(&self) -> Self::MP;
+
+    // TODO: The return type should be some kind of variable to support symbolic evaluation,
+    // but maybe separate from `VarEF` since that might be a `PackedField`?
+    fn permutation_randomness(&self) -> &[Self::EF];
+}
+
+
 impl<'a, AB: PermutationAirBuilder> PermutationAirBuilder for FilteredAirBuilder<'a, AB> {
     type MP = AB::MP;
-
-    type RandomVar = AB::RandomVar;
 
     fn permutation(&self) -> Self::MP {
         self.inner.permutation()
     }
 
-    fn permutation_randomness(&self) -> &[Self::RandomVar] {
+    fn permutation_randomness(&self) -> &[Self::EF] {
         self.inner.permutation_randomness()
     }
+}
+
+pub trait TwoPhaseAirBuilder: AirBuilder {
+
+    type RandomVar: Into<Self::Expr> + Copy;
+
+    fn phase2(&self) -> Self::M;
+
+    fn verifier_randomness(&self) -> &Self::RandomVar;
 }
