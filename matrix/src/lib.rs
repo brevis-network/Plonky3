@@ -9,6 +9,7 @@ use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 
 use itertools::{izip, Itertools};
+use serde::{Deserialize, Serialize};
 use p3_field::{
     dot_product, ExtensionField, Field, FieldAlgebra, FieldExtensionAlgebra, PackedValue,
 };
@@ -29,7 +30,7 @@ pub mod stack;
 pub mod strided;
 pub mod util;
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dimensions {
     pub width: usize,
     pub height: usize,
