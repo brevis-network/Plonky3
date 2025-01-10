@@ -96,6 +96,7 @@ impl FieldAlgebra for Mersenne31 {
     const ZERO: Self = Self { value: 0 };
     const ONE: Self = Self { value: 1 };
     const TWO: Self = Self { value: 2 };
+    const FOUR: Self = Self { value: 4 };
     const NEG_ONE: Self = Self {
         value: Self::ORDER_U32 - 1,
     };

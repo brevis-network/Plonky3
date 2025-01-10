@@ -80,6 +80,7 @@ impl<F: Field> FieldAlgebra for SymbolicExpression<F> {
     const ZERO: Self = Self::Constant(F::ZERO);
     const ONE: Self = Self::Constant(F::ONE);
     const TWO: Self = Self::Constant(F::TWO);
+    const FOUR: Self = Self::Constant(F::FOUR);
     const NEG_ONE: Self = Self::Constant(F::NEG_ONE);
 
     #[inline]

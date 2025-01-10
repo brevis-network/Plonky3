@@ -165,6 +165,7 @@ impl<FP: FieldParameters> FieldAlgebra for MontyField31<FP> {
     const ZERO: Self = FP::MONTY_ZERO;
     const ONE: Self = FP::MONTY_ONE;
     const TWO: Self = FP::MONTY_TWO;
+    const FOUR: Self = FP::MONTY_FOUR;
     const NEG_ONE: Self = FP::MONTY_NEG_ONE;
 
     #[inline(always)]

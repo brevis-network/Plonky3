@@ -85,6 +85,8 @@ pub trait FieldAlgebra:
     /// If the field has characteristic 2 this is equal to ONE.
     const NEG_ONE: Self;
 
+    const FOUR: Self;
+
     /// Interpret a field element as a commutative algebra element.
     ///
     /// Mathematically speaking, this map is a ring homomorphism from the base field
