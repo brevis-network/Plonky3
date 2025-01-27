@@ -96,6 +96,7 @@ impl FieldAlgebra for Goldilocks {
     const ONE: Self = Self::new(1);
     const TWO: Self = Self::new(2);
     const FOUR: Self = Self::new(4);
+    const FIVE: Self = Self::new(5);
     const NEG_ONE: Self = Self::new(Self::ORDER_U64 - 1);
 
     #[inline]

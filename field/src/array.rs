@@ -42,6 +42,7 @@ impl<F: Field, const N: usize> FieldAlgebra for FieldArray<F, N> {
     const ONE: Self = FieldArray([F::ONE; N]);
     const TWO: Self = FieldArray([F::TWO; N]);
     const FOUR: Self = FieldArray([F::FOUR; N]);
+    const FIVE: Self = FieldArray([F::FIVE; N]);
     const NEG_ONE: Self = FieldArray([F::NEG_ONE; N]);
 
     #[inline]

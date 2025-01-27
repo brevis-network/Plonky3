@@ -86,6 +86,7 @@ pub trait FieldAlgebra:
     const NEG_ONE: Self;
 
     const FOUR: Self;
+    const FIVE: Self;
 
     /// Interpret a field element as a commutative algebra element.
     ///

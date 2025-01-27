@@ -136,6 +136,10 @@ where
         value: field_to_array::<FA, D>(FA::FOUR),
     };
 
+    const FIVE: Self = Self {
+        value: field_to_array::<FA, D>(FA::FIVE),
+    };
+
     const NEG_ONE: Self = Self {
         value: field_to_array::<FA, D>(FA::NEG_ONE),
     };
