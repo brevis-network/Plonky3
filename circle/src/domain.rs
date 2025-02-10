@@ -40,8 +40,8 @@ use crate::point::Point;
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct CircleDomain<F> {
     // log_n corresponds to the log size of the WHOLE domain
-    pub(crate) log_n: usize,
-    pub(crate) shift: Point<F>,
+    pub log_n: usize,
+    pub shift: Point<F>,
 }
 
 impl<F: ComplexExtendable> CircleDomain<F> {
