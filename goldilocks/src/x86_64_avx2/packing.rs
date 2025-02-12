@@ -162,6 +162,8 @@ impl FieldAlgebra for PackedGoldilocksAVX2 {
     const ZERO: Self = Self([Goldilocks::ZERO; WIDTH]);
     const ONE: Self = Self([Goldilocks::ONE; WIDTH]);
     const TWO: Self = Self([Goldilocks::TWO; WIDTH]);
+    const FOUR: Self = Self([Goldilocks::FOUR; WIDTH]);
+    const FIVE: Self = Self([Goldilocks::FIVE; WIDTH]);
     const NEG_ONE: Self = Self([Goldilocks::NEG_ONE; WIDTH]);
 
     #[inline]

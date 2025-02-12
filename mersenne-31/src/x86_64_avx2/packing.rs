@@ -398,6 +398,8 @@ impl FieldAlgebra for PackedMersenne31AVX2 {
     const ZERO: Self = Self::broadcast(Mersenne31::ZERO);
     const ONE: Self = Self::broadcast(Mersenne31::ONE);
     const TWO: Self = Self::broadcast(Mersenne31::TWO);
+    const FOUR: Self = Self::broadcast(Mersenne31::FOUR);
+    const FIVE: Self = Self::broadcast(Mersenne31::FIVE);
     const NEG_ONE: Self = Self::broadcast(Mersenne31::NEG_ONE);
 
     #[inline]
