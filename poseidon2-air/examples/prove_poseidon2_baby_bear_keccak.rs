@@ -105,6 +105,7 @@ fn main() -> Result<(), impl Debug> {
 
     let fri_config = FriConfig {
         log_blowup: 1, // TODO: Should this be 3? Why is it working?
+        log_arity: 1,
         num_queries: 100,
         proof_of_work_bits: 16,
         mmcs: challenge_mmcs,

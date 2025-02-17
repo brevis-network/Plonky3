@@ -168,7 +168,7 @@ mod babybear_fri_pcs {
     type Challenger = DuplexChallenger<Val, Perm, 16, 8>;
     type MyPcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
 
-    fn get_pcs(log_blowup: usize) -> (MyPcs, Challenger) {
+    fn get_pcs(log_blowup: usize, log_arity: usize) -> (MyPcs, Challenger) {
         let perm = Perm::new_from_rng_128(&mut seeded_rng());
         let hash = MyHash::new(perm.clone());
         let compress = MyCompress::new(perm.clone());
@@ -178,6 +178,7 @@ mod babybear_fri_pcs {
 
         let fri_config = FriConfig {
             log_blowup,
+            log_arity,
             num_queries: 10,
             proof_of_work_bits: 8,
             mmcs: challenge_mmcs,
@@ -188,10 +189,10 @@ mod babybear_fri_pcs {
     }
 
     mod blowup_1 {
-        make_tests_for_pcs!(super::get_pcs(1));
+        make_tests_for_pcs!(super::get_pcs(1, 1));
     }
     mod blowup_2 {
-        make_tests_for_pcs!(super::get_pcs(2));
+        make_tests_for_pcs!(super::get_pcs(2, 1));
     }
 }
 
@@ -233,6 +234,7 @@ mod m31_fri_pcs {
             num_queries: 10,
             proof_of_work_bits: 8,
             mmcs: challenge_mmcs,
+            log_arity: 1,
         };
         let pcs = Pcs {
             mmcs: val_mmcs,

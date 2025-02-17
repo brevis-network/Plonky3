@@ -31,7 +31,16 @@ p3-poseidon2.workspace = true
 p3-symmetric.workspace = true
 criterion.workspace = true
 rand_chacha.workspace = true
+bincode.workspace = true
 
 [[bench]]
 name = "fold_even_odd"
+harness = false
+
+[[bench]]
+name = "fold_high_arity"
+harness = false
+
+[[bench]]
+name = "fri"
 harness = false

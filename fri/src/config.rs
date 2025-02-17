@@ -7,6 +7,7 @@ use p3_matrix::Matrix;
 #[derive(Debug)]
 pub struct FriConfig<M> {
     pub log_blowup: usize,
+    pub log_arity: usize,
     pub num_queries: usize,
     pub proof_of_work_bits: usize,
     pub mmcs: M,
@@ -15,6 +16,10 @@ pub struct FriConfig<M> {
 impl<M> FriConfig<M> {
     pub const fn blowup(&self) -> usize {
         1 << self.log_blowup
+    }
+
+    pub const fn arity(&self) -> usize {
+        1 << self.log_arity
     }
 
     /// Returns the soundness bits of this FRI instance based on the
@@ -44,10 +49,11 @@ pub trait FriGenericConfig<F: Field> {
         &self,
         index: usize,
         log_height: usize,
+        num_folds: usize,
         beta: F,
-        evals: impl Iterator<Item = F>,
+        evals: Vec<F>,
     ) -> F;
 
     /// Same as applying fold_row to every row, possibly faster.
-    fn fold_matrix<M: Matrix<F>>(&self, beta: F, m: M) -> Vec<F>;
+    fn fold_matrix<M: Matrix<F>>(&self, beta: F, m: M, num_folds: usize) -> Vec<F>;
 }

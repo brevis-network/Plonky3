@@ -95,6 +95,7 @@ p3-sha256 = { path = "sha256", version = "0.1.0" }
 p3-symmetric = { path = "symmetric", version = "0.1.0" }
 p3-uni-stark = { path = "uni-stark", version = "0.1.0" }
 p3-util = { path = "util", version = "0.1.0" }
+bincode = "1.3.3"
 
 [profile.profiling]
 inherits = "release"

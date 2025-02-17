@@ -511,6 +511,7 @@ mod tests {
         type Challenger = SerializingChallenger32<Val, HashChallenger<u8, ByteHash, 32>>;
 
         let fri_config = FriConfig {
+            log_arity: 1,
             log_blowup: 1,
             num_queries: 2,
             proof_of_work_bits: 1,

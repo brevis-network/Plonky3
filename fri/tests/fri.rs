@@ -1,6 +1,7 @@
 use core::cmp::Reverse;
 use std::marker::PhantomData;
 
+use itertools::Itertools;
 use p3_baby_bear::{BabyBear, Poseidon2BabyBear};
 use p3_challenger::{CanSampleBits, DuplexChallenger, FieldChallenger};
 use p3_commit::ExtensionMmcs;
@@ -29,30 +30,41 @@ type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
 type Challenger = DuplexChallenger<Val, Perm, 16, 8>;
 type MyFriConfig = FriConfig<ChallengeMmcs>;
 
-fn get_ldt_for_testing<R: Rng>(rng: &mut R) -> (Perm, MyFriConfig) {
+fn get_ldt_for_testing<R: Rng>(
+    rng: &mut R,
+    log_arity: usize,
+    log_blowup: usize,
+) -> (Perm, MyFriConfig) {
     let perm = Perm::new_from_rng_128(rng);
     let hash = MyHash::new(perm.clone());
     let compress = MyCompress::new(perm.clone());
     let mmcs = ChallengeMmcs::new(ValMmcs::new(hash, compress));
     let fri_config = FriConfig {
-        log_blowup: 1,
+        log_blowup,
         num_queries: 10,
         proof_of_work_bits: 8,
         mmcs,
+        log_arity,
     };
     (perm, fri_config)
 }
 
-fn do_test_fri_ldt<R: Rng>(rng: &mut R) {
-    let (perm, fc) = get_ldt_for_testing(rng);
+fn do_test_fri_ldt<R: Rng>(
+    rng: &mut R,
+    test_shapes: &[usize],
+    log_arity: usize,
+    log_blowup: usize,
+) {
+    let (perm, fc) = get_ldt_for_testing(rng, log_arity, log_blowup);
     let dft = Radix2Dit::default();
 
     let shift = Val::GENERATOR;
 
-    let ldes: Vec<RowMajorMatrix<Val>> = (3..10)
+    let ldes: Vec<RowMajorMatrix<Val>> = test_shapes
+        .iter()
         .map(|deg_bits| {
             let evals = RowMajorMatrix::<Val>::rand_nonzero(rng, 1 << deg_bits, 16);
-            let mut lde = dft.coset_lde_batch(evals, 1, shift);
+            let mut lde = dft.coset_lde_batch(evals, log_blowup, shift);
             reverse_matrix_index_bits(&mut lde);
             lde
         })
@@ -88,6 +100,7 @@ fn do_test_fri_ldt<R: Rng>(rng: &mut R) {
 
         let log_max_height = log2_strict_usize(input[0].len());
 
+        let now = std::time::Instant::now();
         let proof = prover::prove(
             &TwoAdicFriGenericConfig::<Vec<(usize, Challenge)>, ()>(PhantomData),
             &fc,
@@ -103,6 +116,11 @@ fn do_test_fri_ldt<R: Rng>(rng: &mut R) {
                 ro.sort_by_key(|(lh, _)| Reverse(*lh));
                 ro
             },
+        );
+        println!(
+            "Prover time at log_arity {}: {:?}",
+            log_arity,
+            now.elapsed().as_secs_f32()
         );
 
         (proof, chal.sample_bits(8))
@@ -131,6 +149,20 @@ fn test_fri_ldt() {
     // FRI is kind of flaky depending on indexing luck
     for i in 0..4 {
         let mut rng = ChaCha20Rng::seed_from_u64(i);
-        do_test_fri_ldt(&mut rng);
+        do_test_fri_ldt(&mut rng, (3..10).collect_vec().as_slice(), 1, 1);
+    }
+}
+
+#[test]
+fn test_fri_higher_arity() {
+    // FRI is kind of flaky depending on indexing luck
+    for i in 0..4 {
+        let mut rng = ChaCha20Rng::seed_from_u64(i);
+        do_test_fri_ldt(&mut rng, &[2, 3, 4], 2, 1);
+        do_test_fri_ldt(&mut rng, &[2, 4, 6, 8], 3, 1);
+        do_test_fri_ldt(&mut rng, &[2, 4, 6, 7], 3, 1);
+        do_test_fri_ldt(&mut rng, &[2, 4, 6, 8, 10], 4, 1);
+        do_test_fri_ldt(&mut rng, &[0, 2, 4, 6, 8], 3, 4);
+        do_test_fri_ldt(&mut rng, &[0, 4], 3, 4);
     }
 }
