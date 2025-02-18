@@ -24,7 +24,10 @@ use serde::{Deserialize, Serialize};
 use tracing::{info_span, instrument};
 
 use crate::verifier::{self, FriError};
-use crate::{fold, fold_even_odd, prover, FriConfig, FriGenericConfig, FriProof};
+use crate::{
+    fold, fold_even_odd, fold_quad, fold_row_large, fold_row_quad, prover, FriConfig,
+    FriGenericConfig, FriProof,
+};
 
 #[derive(Debug)]
 pub struct TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
@@ -75,54 +78,56 @@ impl<F: TwoAdicField, InputProof, InputError: Debug> FriGenericConfig<F>
         log_height: usize,
         num_folds: usize,
         beta: F,
-        evals: Vec<F>,
+        mut evals: Vec<F>,
     ) -> F {
-        // Let h = 2^log_arity. Write a polynomial p(x) as sum_{i=0}^{h-1} x^i p_i(x^h).
-        // We seek a vector of evaluations of the polynomial p'(x) = sum_{i=1}^{h-1} beta^i p_i(x), given
-        // evaluations of p(x).
-        //
-        // Let z be an h-th root of unity. We use the formula:
-        // p_j(x) = 1/(h x^j) sum_{k=0}^{h-1} z^{-i*j}p(z^i*x), which is basically an inverse Fourier transform.
-        // Plugging this in to the expression for p'(x) gives:
-        // p'(x) = sum_{i,j=1}^{h-1} beta^i p(z^i * x) * beta^j * z^{-i*j} / (h x^j).
-
-        let g_inv = F::two_adic_generator(log_height + num_folds).inverse();
-        let normalizing_factor = F::from_canonical_u32(1 << num_folds).inverse();
-
-        // TODO: vectorize this (after we have packed extension fields)
-
-        // successive powers of g_inv
-        let g_power = g_inv.exp_u64(reverse_bits_len(index, log_height) as u64);
-
+        let g_power = F::two_adic_generator(log_height + num_folds)
+            .exp_u64(reverse_bits_len(index, log_height) as u64);
+        if num_folds == 1 {
+            let xs = F::two_adic_generator(1)
+                .shifted_powers(g_power)
+                .take(2)
+                .collect_vec();
+            let (e0, e1) = evals.into_iter().next_tuple().unwrap();
+            return e0 + (beta - xs[0]) * (e1 - e0) / (xs[1] - xs[0]);
+        }
+        // Let h = 2^log_arity, g_h be the root of unity that g_h^h = 1.
+        // p(X) = p_0 + X p_1 + X^2 p_2 + ... + X^(h-1) p_{h-1}.
+        // We have evals[i] = p(X * g^k) evaluated on g_h^i,
+        // where k = reverse_bits_len(index, log_height).
+        // From inverse FFT, we can compute p'(X) = p(X * g^k).
+        // And we want to compute p(beta) = p'(beta / g^k)
         let root_of_unity = F::two_adic_generator(num_folds);
-        let mut roots_of_unity = root_of_unity
+        let mut roots_of_unity_inv = root_of_unity
             .inverse()
             .powers()
             .take(1 << num_folds)
             .collect_vec();
-        reverse_slice_index_bits(&mut roots_of_unity);
+        reverse_slice_index_bits(&mut roots_of_unity_inv);
 
-        evals
-            .into_iter()
-            .zip(roots_of_unity.iter())
-            .map(|(r, root)| {
-                r * normalizing_factor
-                    * izip!(
-                        beta.powers().take(1 << num_folds),
-                        root.powers(),
-                        g_power.powers()
-                    )
-                    .map(|(a, b, c)| a * b * c)
-                    .sum()
-            })
-            .sum()
+        match num_folds {
+            2 => fold_row_quad(
+                &evals,
+                &roots_of_unity_inv,
+                g_power.inverse(),
+                beta,
+                F::from_canonical_u32(4).inverse(),
+            ),
+            _ => fold_row_large(
+                &mut evals,
+                &roots_of_unity_inv,
+                g_power.inverse(),
+                beta,
+                F::from_canonical_u32(1 << num_folds).inverse(),
+                num_folds,
+            ),
+        }
     }
 
     fn fold_matrix<M: Matrix<F>>(&self, beta: F, m: M, num_folds: usize) -> Vec<F> {
-        if num_folds == 1 {
-            fold_even_odd(m, beta)
-        } else {
-            fold(m, beta, num_folds)
+        match num_folds {
+            1 => fold_even_odd(m, beta),
+            2 => fold_quad(m, beta),
+            _ => fold(m, beta, num_folds),
         }
     }
 }

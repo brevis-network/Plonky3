@@ -1,11 +1,16 @@
 use alloc::vec::Vec;
 
-use itertools::{izip, Itertools};
+use itertools::Itertools;
 use p3_field::TwoAdicField;
 use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
 use p3_util::{log2_strict_usize, reverse_slice_index_bits};
 use tracing::instrument;
+
+#[inline]
+pub fn fold_row_binary<F: TwoAdicField>(r0: F, r1: F, shifted_g_inv_power: F, one_half: F) -> F {
+    (one_half + shifted_g_inv_power) * r0 + (one_half - shifted_g_inv_power) * r1
+}
 
 /// Fold a polynomial
 /// ```ignore
@@ -46,12 +51,99 @@ pub fn fold_even_odd<M: Matrix<F>, F: TwoAdicField>(m: M, beta: F) -> Vec<F> {
         .zip(powers)
         .map(|(mut row, power)| {
             let (r0, r1) = row.next_tuple().unwrap();
-            (one_half + power) * r0 + (one_half - power) * r1
+            fold_row_binary(r0, r1, power, one_half)
         })
         .collect()
 }
 
+pub fn fold_row_quad<F: TwoAdicField>(
+    evals: &[F],
+    roots_of_unity_inv: &[F],
+    g_inv_power: F,
+    beta: F,
+    normalizing_factor: F,
+) -> F {
+    let beta = beta * g_inv_power;
+    let coeff_0 = evals[0] + evals[1] + evals[2] + evals[3];
+    let coeff_1 = roots_of_unity_inv[0] * (evals[0] - evals[1])
+        + roots_of_unity_inv[2] * (evals[2] - evals[3]);
+    let coeff_2 = roots_of_unity_inv[0] * (evals[0] + evals[1] - evals[2] - evals[3]);
+    let coeff_3 = roots_of_unity_inv[0] * (evals[0] - evals[1])
+        - roots_of_unity_inv[2] * (evals[2] - evals[3]);
+    (((coeff_3 * beta + coeff_2) * beta + coeff_1) * beta + coeff_0) * normalizing_factor
+}
+
+#[instrument(skip_all, level = "debug")]
+pub fn fold_quad<M: Matrix<F>, F: TwoAdicField>(m: M, beta: F) -> Vec<F> {
+    assert_eq!(m.width(), 4);
+    let log_arity = 2;
+    let g_inv = F::two_adic_generator(log2_strict_usize(m.height()) + log_arity).inverse();
+    let normalizing_factor = F::from_canonical_u32(1 << log_arity).inverse();
+
+    // TODO: vectorize this (after we have packed extension fields)
+
+    // successive powers of g_inv
+    let mut g_inv_powers = g_inv.powers().take(m.height()).collect_vec();
+    reverse_slice_index_bits(&mut g_inv_powers);
+
+    let root_of_unity = F::two_adic_generator(log_arity);
+    let mut roots_of_unity_inv = root_of_unity
+        .inverse()
+        .powers()
+        .take(1 << log_arity)
+        .collect_vec();
+    reverse_slice_index_bits(&mut roots_of_unity_inv);
+
+    m.par_rows()
+        .zip(g_inv_powers)
+        .map(|(mut row, g_inv_power)| {
+            let (r_0, r_1) = row.next_tuple().unwrap();
+            let (r_2, r_3) = row.next_tuple().unwrap();
+            fold_row_quad(
+                &[r_0, r_1, r_2, r_3],
+                &roots_of_unity_inv,
+                g_inv_power,
+                beta,
+                normalizing_factor,
+            )
+        })
+        .collect()
+}
+
+pub(crate) fn fold_row_large<F: TwoAdicField>(
+    evals: &mut [F],
+    roots_of_unity_inv: &[F],
+    g_inv_power: F,
+    beta: F,
+    normalizing_factor: F,
+    num_folds: usize,
+) -> F {
+    let h = 1 << num_folds;
+    for l in 0..num_folds {
+        let len = 1 << (l + 1);
+        (0..h).step_by(len).for_each(|i| {
+            let half_len = len >> 1;
+            for j in 0..half_len {
+                let idx_0 = i + j;
+                let idx_1 = idx_0 + half_len;
+                let u = evals[idx_0] + evals[idx_1];
+                let v = roots_of_unity_inv[idx_0 >> l] * (evals[idx_0] - evals[idx_1]);
+                evals[idx_0] = u;
+                evals[idx_1] = v;
+            }
+        });
+    }
+
+    let beta = beta * g_inv_power;
+    evals
+        .iter()
+        .rev()
+        .fold(F::ZERO, |acc, &eval| acc * beta + eval)
+        * normalizing_factor
+}
+
 /// Fold a polynomial by an arity higher than 2.
+#[instrument(skip_all, level = "debug")]
 pub fn fold<M: Matrix<F>, F: TwoAdicField>(m: M, beta: F, log_arity: usize) -> Vec<F> {
     assert_eq!(m.width(), 1 << log_arity);
     // Let h = 2^log_arity. Write a polynomial p(x) as sum_{i=0}^{h-1} x^i p_i(x^h).
@@ -69,42 +161,29 @@ pub fn fold<M: Matrix<F>, F: TwoAdicField>(m: M, beta: F, log_arity: usize) -> V
     // TODO: vectorize this (after we have packed extension fields)
 
     // successive powers of g_inv
-    let mut g_powers = g_inv.powers().take(m.height()).collect_vec();
-    reverse_slice_index_bits(&mut g_powers);
+    let mut g_inv_powers = g_inv.powers().take(m.height()).collect_vec();
+    reverse_slice_index_bits(&mut g_inv_powers);
 
     let root_of_unity = F::two_adic_generator(log_arity);
-    let mut roots_of_unity = root_of_unity
+    let mut roots_of_unity_inv = root_of_unity
         .inverse()
         .powers()
         .take(1 << log_arity)
         .collect_vec();
-    reverse_slice_index_bits(&mut roots_of_unity);
+    reverse_slice_index_bits(&mut roots_of_unity_inv);
 
-    let half_coeffs = roots_of_unity
-        .iter()
-        .map(|root| {
-            izip!(beta.powers().take(1 << (log_arity - 1)), root.powers(),)
-                .map(|(a, b)| normalizing_factor * a * b)
-                .collect_vec()
-        })
-        .collect_vec();
-
-    let beta_shift = beta.exp_power_of_2(log_arity - 1);
     m.par_rows()
-        .zip(g_powers)
-        .map(|(row, power)| {
-            let shift_even = F::ONE + beta_shift * power.exp_power_of_2(log_arity - 1);
-            let shift_odd = F::TWO - shift_even;
-            row.zip(half_coeffs.iter().enumerate())
-                .map(|(r, (i, coeff))| {
-                    let x = if i >> (log_arity - 1) & 1 == 0 {
-                        shift_even
-                    } else {
-                        shift_odd
-                    };
-                    r * x * izip!(coeff, power.powers()).map(|(a, b)| *a * b).sum()
-                })
-                .sum()
+        .zip(g_inv_powers)
+        .map(|(row, g_inv_power)| {
+            let mut row = row.collect_vec();
+            fold_row_large(
+                &mut row,
+                &roots_of_unity_inv,
+                g_inv_power,
+                beta,
+                normalizing_factor,
+                log_arity,
+            )
         })
         .collect::<Vec<_>>()
 }
