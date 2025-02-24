@@ -515,6 +515,8 @@ mod tests {
             num_queries: 2,
             proof_of_work_bits: 1,
             mmcs: challenge_mmcs,
+            arity_bits: 1,
+            log_final_poly_len: 0,
         };
 
         type Pcs = CirclePcs<Val, ValMmcs, ChallengeMmcs>;

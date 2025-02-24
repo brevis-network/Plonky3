@@ -125,6 +125,8 @@ fn test_public_value_impl(n: usize, x: u64) {
         num_queries: 28,
         proof_of_work_bits: 8,
         mmcs: challenge_mmcs,
+        arity_bits: 1,
+        log_final_poly_len: 0,
     };
     let pcs = Pcs::new(dft, val_mmcs, fri_config);
     let config = MyConfig::new(pcs);
@@ -164,6 +166,8 @@ fn test_incorrect_public_value() {
         num_queries: 28,
         proof_of_work_bits: 8,
         mmcs: challenge_mmcs,
+        arity_bits: 1,
+        log_final_poly_len: 0,
     };
     let trace = generate_trace_rows::<Val>(0, 1, 1 << 3);
     let pcs = Pcs::new(dft, val_mmcs, fri_config);

@@ -79,7 +79,7 @@ impl<F: TwoAdicField, InputProof, InputError: Debug> FriGenericConfig<F>
         let log_arity = 1;
         let (e0, e1) = evals
             .collect_tuple()
-            .expect("TwoAdicFriFolder only supports arity=2");
+            .expect("TwoAdicFriGenericConfig only supports folding rows of size 2");
         // If performance critical, make this API stateful to avoid this
         // This is a bit more math than is necessary, but leaving it here
         // in case we want higher arity in the future
@@ -122,7 +122,9 @@ impl<F: TwoAdicField, InputProof, InputError: Debug> FriGenericConfig<F>
         m.par_rows()
             .zip(powers)
             .map(|(mut row, power)| {
-                let (lo, hi) = row.next_tuple().unwrap();
+                let (lo, hi) = row
+                    .next_tuple()
+                    .expect("TwoAdicFriGenericConfig only supports folding rows of size 2");
                 (one_half + power) * lo + (one_half - power) * hi
             })
             .collect()
@@ -366,7 +368,16 @@ where
         // Batch combination challenge
         let alpha: Challenge = challenger.sample_ext_element();
 
-        let log_global_max_height = proof.commit_phase_commits.len() + self.fri.log_blowup;
+        let log_global_max_height = rounds
+            .iter()
+            .map(|(_, mats)| {
+                mats.iter()
+                    .map(|(domain, _)| log2_strict_usize(domain.size()) + self.fri.log_blowup)
+                    .max()
+                    .unwrap()
+            })
+            .max()
+            .unwrap();
 
         let g: TwoAdicFriGenericConfigForMmcs<Val, InputMmcs> =
             TwoAdicFriGenericConfig(PhantomData);
@@ -392,7 +403,6 @@ where
                 let log_batch_max_height = log2_strict_usize(*batch_max_height);
                 let bits_reduced = log_global_max_height - log_batch_max_height;
                 let reduced_index = index >> bits_reduced;
-
                 self.mmcs.verify_batch(
                     batch_commit,
                     &batch_dims,

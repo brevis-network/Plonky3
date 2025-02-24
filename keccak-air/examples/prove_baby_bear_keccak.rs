@@ -55,9 +55,11 @@ fn main() -> Result<(), impl Debug> {
 
     let fri_config = FriConfig {
         log_blowup: 1,
-        num_queries: 100,
+        num_queries: 1,
         proof_of_work_bits: 16,
         mmcs: challenge_mmcs,
+        arity_bits: 2,
+        log_final_poly_len: 0,
     };
     type Dft = RecursiveDft<Val>;
     let dft = Dft::new(trace.height() << fri_config.log_blowup);

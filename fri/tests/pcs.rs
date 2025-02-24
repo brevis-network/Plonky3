@@ -178,8 +178,10 @@ mod babybear_fri_pcs {
 
         let fri_config = FriConfig {
             log_blowup,
+            log_final_poly_len: 0,
             num_queries: 10,
             proof_of_work_bits: 8,
+            arity_bits: 1,
             mmcs: challenge_mmcs,
         };
 
@@ -222,7 +224,7 @@ mod m31_fri_pcs {
 
     type Pcs = CirclePcs<Val, ValMmcs, ChallengeMmcs>;
 
-    fn get_pcs(log_blowup: usize) -> (Pcs, Challenger) {
+    fn get_pcs(arity_bits: usize, log_blowup: usize) -> (Pcs, Challenger) {
         let byte_hash = ByteHash {};
         let field_hash = FieldHash::new(byte_hash);
         let compress = MyCompress::new(byte_hash);
@@ -230,8 +232,10 @@ mod m31_fri_pcs {
         let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
         let fri_config = FriConfig {
             log_blowup,
+            log_final_poly_len: 0,
             num_queries: 10,
             proof_of_work_bits: 8,
+            arity_bits,
             mmcs: challenge_mmcs,
         };
         let pcs = Pcs {
@@ -243,9 +247,17 @@ mod m31_fri_pcs {
     }
 
     mod blowup_1 {
-        make_tests_for_pcs!(super::get_pcs(1));
+        make_tests_for_pcs!(super::get_pcs(1, 1));
     }
     mod blowup_2 {
-        make_tests_for_pcs!(super::get_pcs(2));
+        make_tests_for_pcs!(super::get_pcs(1, 2));
+    }
+
+    mod arity_4 {
+        make_tests_for_pcs!(super::get_pcs(2, 2));
+    }
+
+    mod arity_8 {
+        make_tests_for_pcs!(super::get_pcs(3, 2));
     }
 }

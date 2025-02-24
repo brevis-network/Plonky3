@@ -60,6 +60,8 @@ fn main() -> Result<(), impl Debug> {
         num_queries: 100,
         proof_of_work_bits: 16,
         mmcs: challenge_mmcs,
+        arity_bits: 1,
+        log_final_poly_len: 0,
     };
     type Pcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
     let pcs = Pcs::new(dft, val_mmcs, fri_config);

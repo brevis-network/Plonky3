@@ -219,6 +219,8 @@ fn do_test_bb_twoadic(log_blowup: usize, degree: u64, log_n: usize) -> Result<()
         num_queries: 40,
         proof_of_work_bits: 8,
         mmcs: challenge_mmcs,
+        arity_bits: 1,
+        log_final_poly_len: 0,
     };
     type Pcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
     let pcs = Pcs::new(dft, val_mmcs, fri_config);
@@ -279,6 +281,8 @@ fn do_test_m31_circle(log_blowup: usize, degree: u64, log_n: usize) -> Result<()
         num_queries: 40,
         proof_of_work_bits: 8,
         mmcs: challenge_mmcs,
+        arity_bits: 1,
+        log_final_poly_len: 0,
     };
 
     type Pcs = CirclePcs<Val, ValMmcs, ChallengeMmcs>;
