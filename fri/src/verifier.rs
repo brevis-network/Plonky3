@@ -26,6 +26,7 @@ pub fn verify<G, Val, Challenge, M, Challenger>(
     proof: &FriProof<Challenge, M, Challenger::Witness, G::InputProof>,
     challenger: &mut Challenger,
     open_input: impl Fn(usize, &G::InputProof) -> Result<Vec<(usize, Challenge)>, G::InputError>,
+    log_max_height: usize,
 ) -> Result<(), FriError<M::Error, G::InputError>>
 where
     Val: Field,
@@ -57,8 +58,6 @@ where
     if !challenger.check_witness(config.proof_of_work_bits, proof.pow_witness) {
         return Err(FriError::InvalidPowWitness);
     }
-
-    let log_max_height = proof.log_max_height;
 
     for qp in &proof.query_proofs {
         let index = challenger.sample_bits(log_max_height + g.extra_query_index_bits());

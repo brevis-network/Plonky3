@@ -199,6 +199,7 @@ fn bench_fri(c: &mut Criterion) {
                                 &proof,
                                 &mut v_challenger,
                                 |_index, proof| Ok(proof.clone()),
+                                test_shape_start as usize + log_blowup,
                             )
                             .unwrap();
                         },

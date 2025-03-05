@@ -382,75 +382,82 @@ where
         let g: TwoAdicFriGenericConfigForMmcs<Val, InputMmcs> =
             TwoAdicFriGenericConfig(PhantomData);
 
-        verifier::verify(&g, &self.fri, proof, challenger, |index, input_proof| {
-            // TODO: separate this out into functions
+        verifier::verify(
+            &g,
+            &self.fri,
+            proof,
+            challenger,
+            |index, input_proof| {
+                // TODO: separate this out into functions
 
-            // log_height -> (alpha_pow, reduced_opening)
-            let mut reduced_openings = BTreeMap::<usize, (Challenge, Challenge)>::new();
+                // log_height -> (alpha_pow, reduced_opening)
+                let mut reduced_openings = BTreeMap::<usize, (Challenge, Challenge)>::new();
 
-            for (batch_opening, (batch_commit, mats)) in izip!(input_proof, &rounds) {
-                let batch_heights = mats
-                    .iter()
-                    .map(|(domain, _)| domain.size() << self.fri.log_blowup)
-                    .collect_vec();
-                let batch_dims = batch_heights
-                    .iter()
-                    // TODO: MMCS doesn't really need width; we put 0 for now.
-                    .map(|&height| Dimensions { width: 0, height })
-                    .collect_vec();
+                for (batch_opening, (batch_commit, mats)) in izip!(input_proof, &rounds) {
+                    let batch_heights = mats
+                        .iter()
+                        .map(|(domain, _)| domain.size() << self.fri.log_blowup)
+                        .collect_vec();
+                    let batch_dims = batch_heights
+                        .iter()
+                        // TODO: MMCS doesn't really need width; we put 0 for now.
+                        .map(|&height| Dimensions { width: 0, height })
+                        .collect_vec();
 
-                let batch_max_height = batch_heights.iter().max().expect("Empty batch?");
-                let log_batch_max_height = log2_strict_usize(*batch_max_height);
-                let bits_reduced = log_global_max_height - log_batch_max_height;
-                let reduced_index = index >> bits_reduced;
-                self.mmcs.verify_batch(
-                    batch_commit,
-                    &batch_dims,
-                    reduced_index,
-                    &batch_opening.opened_values,
-                    &batch_opening.opening_proof,
-                )?;
-                for (mat_opening, (mat_domain, mat_points_and_values)) in
-                    izip!(&batch_opening.opened_values, mats)
-                {
-                    let log_height = log2_strict_usize(mat_domain.size()) + self.fri.log_blowup;
+                    let batch_max_height = batch_heights.iter().max().expect("Empty batch?");
+                    let log_batch_max_height = log2_strict_usize(*batch_max_height);
+                    let bits_reduced = log_global_max_height - log_batch_max_height;
+                    let reduced_index = index >> bits_reduced;
+                    self.mmcs.verify_batch(
+                        batch_commit,
+                        &batch_dims,
+                        reduced_index,
+                        &batch_opening.opened_values,
+                        &batch_opening.opening_proof,
+                    )?;
+                    for (mat_opening, (mat_domain, mat_points_and_values)) in
+                        izip!(&batch_opening.opened_values, mats)
+                    {
+                        let log_height = log2_strict_usize(mat_domain.size()) + self.fri.log_blowup;
 
-                    let bits_reduced = log_global_max_height - log_height;
-                    let rev_reduced_index = reverse_bits_len(index >> bits_reduced, log_height);
+                        let bits_reduced = log_global_max_height - log_height;
+                        let rev_reduced_index = reverse_bits_len(index >> bits_reduced, log_height);
 
-                    // todo: this can be nicer with domain methods?
+                        // todo: this can be nicer with domain methods?
 
-                    let x = Val::GENERATOR
-                        * Val::two_adic_generator(log_height).exp_u64(rev_reduced_index as u64);
+                        let x = Val::GENERATOR
+                            * Val::two_adic_generator(log_height).exp_u64(rev_reduced_index as u64);
 
-                    let (alpha_pow, ro) = reduced_openings
-                        .entry(log_height)
-                        .or_insert((Challenge::ONE, Challenge::ZERO));
+                        let (alpha_pow, ro) = reduced_openings
+                            .entry(log_height)
+                            .or_insert((Challenge::ONE, Challenge::ZERO));
 
-                    for (z, ps_at_z) in mat_points_and_values {
-                        for (&p_at_x, &p_at_z) in izip!(mat_opening, ps_at_z) {
-                            let quotient = (-p_at_z + p_at_x) / (-*z + x);
-                            *ro += *alpha_pow * quotient;
-                            *alpha_pow *= alpha;
+                        for (z, ps_at_z) in mat_points_and_values {
+                            for (&p_at_x, &p_at_z) in izip!(mat_opening, ps_at_z) {
+                                let quotient = (-p_at_z + p_at_x) / (-*z + x);
+                                *ro += *alpha_pow * quotient;
+                                *alpha_pow *= alpha;
+                            }
                         }
                     }
                 }
-            }
 
-            // `reduced_openings` would have a log_height = log_blowup entry only if there was a
-            // trace matrix of height 1. In this case the reduced opening can be skipped as it will
-            // not be checked against any commit phase commit.
-            if let Some((_alpha_pow, ro)) = reduced_openings.remove(&self.fri.log_blowup) {
-                debug_assert!(ro.is_zero());
-            }
+                // `reduced_openings` would have a log_height = log_blowup entry only if there was a
+                // trace matrix of height 1. In this case the reduced opening can be skipped as it will
+                // not be checked against any commit phase commit.
+                if let Some((_alpha_pow, ro)) = reduced_openings.remove(&self.fri.log_blowup) {
+                    debug_assert!(ro.is_zero());
+                }
 
-            // Return reduced openings descending by log_height.
-            Ok(reduced_openings
-                .into_iter()
-                .rev()
-                .map(|(log_height, (_alpha_pow, ro))| (log_height, ro))
-                .collect())
-        })
+                // Return reduced openings descending by log_height.
+                Ok(reduced_openings
+                    .into_iter()
+                    .rev()
+                    .map(|(log_height, (_alpha_pow, ro))| (log_height, ro))
+                    .collect())
+            },
+            log_global_max_height,
+        )
         .expect("fri err");
 
         Ok(())
@@ -500,4 +507,10 @@ fn compute_inverse_denominators<F: TwoAdicField, EF: ExtensionField<F>, M: Matri
             )
         })
         .collect()
+}
+
+pub fn bits_2_usize(bits: &[usize]) -> usize {
+    bits.iter()
+        .enumerate()
+        .fold(0, |acc, (i, curr)| acc + (curr << i))
 }

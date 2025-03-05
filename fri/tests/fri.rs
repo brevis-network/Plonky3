@@ -73,7 +73,7 @@ fn do_test_fri_ldt<R: Rng>(
         })
         .collect();
 
-    let (proof, p_sample) = {
+    let (proof, p_sample, log_max_height) = {
         // Prover world
         let mut chal = Challenger::new(perm.clone());
         let alpha: Challenge = chal.sample_ext_element();
@@ -120,7 +120,7 @@ fn do_test_fri_ldt<R: Rng>(
             },
         );
 
-        (proof, chal.sample_bits(8))
+        (proof, chal.sample_bits(8), log_max_height)
     };
 
     let mut v_challenger = Challenger::new(perm);
@@ -131,6 +131,7 @@ fn do_test_fri_ldt<R: Rng>(
         &proof,
         &mut v_challenger,
         |_index, proof| Ok(proof.clone()),
+        log_max_height,
     )
     .unwrap();
 
