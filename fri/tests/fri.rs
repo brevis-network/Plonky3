@@ -43,7 +43,7 @@ fn get_ldt_for_testing<R: Rng>(
     let fri_config = FriConfig {
         log_blowup,
         log_final_poly_len,
-        num_queries: 10,
+        num_queries: 1,
         proof_of_work_bits: 8,
         arity_bits,
         mmcs,

@@ -37,3 +37,7 @@ rand_chacha.workspace = true
 [[bench]]
 name = "fold_even_odd"
 harness = false
+
+[[bench]]
+name = "fri"
+harness = false

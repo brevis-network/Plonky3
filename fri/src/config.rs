@@ -60,6 +60,10 @@ pub trait FriGenericConfig<F: Field> {
         evals: impl Iterator<Item = F>,
     ) -> F;
 
+    /// Same logic as `fold_row`, with root_of_unity and x.
+    fn fold_row_with_x(&self, root_of_unity: F, x: F, beta: F, evals: impl Iterator<Item = F>)
+        -> F;
+
     /// Same as applying fold_row to every row, possibly faster.
     fn fold_matrix<M: Matrix<F>>(&self, beta: F, m: M) -> Vec<F>;
 }

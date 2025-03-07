@@ -4,9 +4,8 @@ use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
 use p3_commit::Mmcs;
 use p3_field::{ExtensionField, Field, TwoAdicField};
-use p3_matrix::dense::RowMajorMatrix;
-use p3_matrix::{Dimensions, Matrix};
-use p3_util::reverse_bits_len;
+use p3_matrix::Dimensions;
+use p3_util::{log2_strict_usize, reverse_bits_len, reverse_slice_index_bits};
 
 use crate::{CommitPhaseProofStep, FriConfig, FriGenericConfig, FriProof};
 
@@ -123,13 +122,18 @@ fn verify_query<'a, G, F, M>(
     log_max_height: usize,
 ) -> Result<F, FriError<M::Error, G::InputError>>
 where
-    F: Field,
+    F: Field + TwoAdicField,
     M: Mmcs<F> + 'a,
     G: FriGenericConfig<F>,
 {
     let mut folded_eval = F::ZERO;
-    let mut ro_iter = reduced_openings.into_iter().peekable();
+    let roots_of_unity = (1..=config.arity_bits)
+        .map(|i| F::two_adic_generator(i))
+        .collect::<Vec<_>>();
+    let mut x = F::two_adic_generator(log_max_height)
+        .exp_u64(reverse_bits_len(index, log_max_height) as u64);
 
+    let mut ro_iter = reduced_openings.into_iter().peekable();
     let mut log_folded_height = log_max_height;
 
     while log_folded_height > config.log_blowup + config.log_final_poly_len {
@@ -184,17 +188,25 @@ where
 
         let mut opened_rows_iter = opening.opened_rows.iter().peekable();
         let mut folded_row = opened_rows_iter.next().unwrap().clone();
-        let mut index_folded_row = index_row << cur_arity_bits;
+        reverse_slice_index_bits(&mut folded_row);
+
+        let mut x_prime = x * roots_of_unity[cur_arity_bits - 1]
+            .inverse()
+            .exp_u64(reverse_bits_len(index & ((1 << cur_arity_bits) - 1), cur_arity_bits) as u64);
+
         while folded_row.len() > 1 {
             index >>= 1;
             log_folded_height -= 1;
-            index_folded_row >>= 1;
 
-            folded_row = fold_partial_row(g, index_folded_row, log_folded_height, beta, folded_row);
+            folded_row = fold_partial_row(g, x_prime, &roots_of_unity, beta, folded_row);
             beta = beta.square();
+            x = x.square();
+            x_prime = x_prime.square();
 
             if let Some(poly_eval) = opened_rows_iter.next_if(|v| v.len() == folded_row.len()) {
-                izip!(&mut folded_row, poly_eval).for_each(|(f, v)| *f += *v);
+                let mut poly_eval = poly_eval.to_vec();
+                reverse_slice_index_bits(&mut poly_eval);
+                izip!(&mut folded_row, poly_eval).for_each(|(f, v)| *f += v);
             }
         }
 
@@ -215,15 +227,18 @@ where
     Ok(folded_eval)
 }
 
-fn fold_partial_row<G, F>(g: &G, index: usize, log_height: usize, beta: F, evals: Vec<F>) -> Vec<F>
+fn fold_partial_row<G, F>(g: &G, mut x: F, roots_of_unity: &[F], beta: F, evals: Vec<F>) -> Vec<F>
 where
     G: FriGenericConfig<F>,
     F: Field,
 {
-    let folded_matrix = RowMajorMatrix::new(evals, 2);
-    folded_matrix
-        .rows()
-        .enumerate()
-        .map(|(i, row)| g.fold_row(index + i, log_height, beta, row.into_iter()))
+    let n_bits = log2_strict_usize(evals.len()) - 1;
+    let half_len = evals.len() >> 1;
+    izip!(&evals, &evals[half_len..])
+        .map(|(&eval_0, &eval_1)| {
+            let res = g.fold_row_with_x(roots_of_unity[0], x, beta, [eval_0, eval_1].into_iter());
+            x *= roots_of_unity[n_bits];
+            res
+        })
         .collect()
 }

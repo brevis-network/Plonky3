@@ -75,24 +75,10 @@ impl<F: TwoAdicField, InputProof, InputError: Debug> FriGenericConfig<F>
         beta: F,
         evals: impl Iterator<Item = F>,
     ) -> F {
-        let arity = 2;
         let log_arity = 1;
-        let (e0, e1) = evals
-            .collect_tuple()
-            .expect("TwoAdicFriGenericConfig only supports folding rows of size 2");
-        // If performance critical, make this API stateful to avoid this
-        // This is a bit more math than is necessary, but leaving it here
-        // in case we want higher arity in the future
-        let subgroup_start = F::two_adic_generator(log_height + log_arity)
+        let x = F::two_adic_generator(log_height + log_arity)
             .exp_u64(reverse_bits_len(index, log_height) as u64);
-        let mut xs = F::two_adic_generator(log_arity)
-            .shifted_powers(subgroup_start)
-            .take(arity)
-            .collect_vec();
-        reverse_slice_index_bits(&mut xs);
-        assert_eq!(log_arity, 1, "can only interpolate two points for now");
-        // interpolate and evaluate at beta
-        e0 + (beta - xs[0]) * (e1 - e0) / (xs[1] - xs[0])
+        self.fold_row_with_x(F::two_adic_generator(log_arity), x, beta, evals)
     }
 
     fn fold_matrix<M: Matrix<F>>(&self, beta: F, m: M) -> Vec<F> {
@@ -128,6 +114,19 @@ impl<F: TwoAdicField, InputProof, InputError: Debug> FriGenericConfig<F>
                 (one_half + power) * lo + (one_half - power) * hi
             })
             .collect()
+    }
+
+    fn fold_row_with_x(
+        &self,
+        root_of_unity: F,
+        x: F,
+        beta: F,
+        evals: impl Iterator<Item = F>,
+    ) -> F {
+        let x_next = x * root_of_unity;
+        let (e0, e1) = evals.collect_tuple().unwrap();
+        // interpolate and evaluate at beta
+        e0 + (beta - x) * (e1 - e0) / (x_next - x)
     }
 }
 
