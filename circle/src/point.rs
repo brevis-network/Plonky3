@@ -1,14 +1,14 @@
 use alloc::vec::Vec;
 use core::ops::{Add, AddAssign, Mul, Neg, Sub};
-
 use p3_field::extension::ComplexExtendable;
 use p3_field::{batch_multiplicative_inverse, ExtensionField, Field};
+use serde::{Deserialize, Serialize};
 
 /// Affine representation of a point on the circle.
 /// x^2 + y^2 == 1
 // _private is to prevent construction so we can debug assert the invariant
 #[allow(clippy::manual_non_exhaustive)]
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
 pub struct Point<F> {
     pub x: F,
     pub y: F,

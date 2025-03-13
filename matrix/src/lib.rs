@@ -9,11 +9,11 @@ use core::fmt::{Debug, Display, Formatter};
 use core::ops::Deref;
 
 use itertools::{izip, Itertools};
-use serde::{Deserialize, Serialize};
 use p3_field::{
     dot_product, ExtensionField, Field, FieldAlgebra, FieldExtensionAlgebra, PackedValue,
 };
 use p3_maybe_rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use strided::{VerticallyStridedMatrixView, VerticallyStridedRowIndexMap};
 use tracing::instrument;
 

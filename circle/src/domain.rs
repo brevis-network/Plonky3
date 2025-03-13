@@ -8,6 +8,8 @@ use p3_field::ExtensionField;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 use p3_util::{log2_ceil_usize, log2_strict_usize};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use crate::point::Point;
@@ -37,7 +39,9 @@ use crate::point::Point;
 /// ```
 ///
 /// The full domain is the interleaving of these two cosets
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(bound(serialize = "F: Serialize"))]
+#[serde(bound(deserialize = "F: DeserializeOwned"))]
 pub struct CircleDomain<F> {
     // log_n corresponds to the log size of the WHOLE domain
     pub log_n: usize,
