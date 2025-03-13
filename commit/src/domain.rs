@@ -1,8 +1,6 @@
 use alloc::vec::Vec;
 
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-use serde::de::DeserializeOwned;
 use p3_field::{
     batch_multiplicative_inverse, cyclic_subgroup_coset_known_order, ExtensionField, Field,
     TwoAdicField,
@@ -10,6 +8,8 @@ use p3_field::{
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 use p3_util::{log2_ceil_usize, log2_strict_usize};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
 pub struct LagrangeSelectors<T> {
