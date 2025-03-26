@@ -37,6 +37,10 @@ where
         "Inputs are not sorted in descending order of length."
     );
 
+    println!(
+        "fri prove shapes: {:?}",
+        inputs.iter().map(|i| i.len()).collect_vec()
+    );
     let log_max_height = log2_strict_usize(inputs[0].len());
     let log_min_height = log2_strict_usize(inputs.last().unwrap().len());
     if config.log_final_poly_len > 0 {

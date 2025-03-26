@@ -3,6 +3,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::marker::PhantomData;
+use std::any::type_name;
 
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
@@ -159,6 +160,13 @@ where
         &self,
         evaluations: Vec<(Self::Domain, RowMajorMatrix<Val>)>,
     ) -> (Self::Commitment, Self::ProverData) {
+        println!(
+            "commit shapes: {:?}",
+            evaluations
+                .iter()
+                .map(|(d, m)| (d.size(), m.width()))
+                .collect_vec()
+        );
         let ldes: Vec<_> = evaluations
             .into_iter()
             .map(|(domain, evals)| {
@@ -364,6 +372,13 @@ where
         proof: &Self::Proof,
         challenger: &mut Challenger,
     ) -> Result<(), Self::Error> {
+        println!(
+            "verify shapes: {:?}",
+            rounds
+                .iter()
+                .map(|(_, lis)| lis.iter().map(|(domain, _)| domain.size()).collect_vec())
+                .collect_vec()
+        );
         // Batch combination challenge
         let alpha: Challenge = challenger.sample_ext_element();
 
@@ -448,6 +463,14 @@ where
                     debug_assert!(ro.is_zero());
                 }
 
+                println!(
+                    "reduced_openings: {:?}",
+                    reduced_openings
+                        .iter()
+                        .rev()
+                        .map(|(lh, _)| lh)
+                        .collect_vec()
+                );
                 // Return reduced openings descending by log_height.
                 Ok(reduced_openings
                     .into_iter()
