@@ -159,6 +159,14 @@ where
         &self,
         evaluations: Vec<(Self::Domain, RowMajorMatrix<Val>)>,
     ) -> (Self::Commitment, Self::ProverData) {
+        #[cfg(feature = "print-log")]
+        println!(
+            "commit shapes: {:?}",
+            evaluations
+                .iter()
+                .map(|(d, m)| (d.size(), m.width()))
+                .collect_vec()
+        );
         let ldes: Vec<_> = evaluations
             .into_iter()
             .map(|(domain, evals)| {
@@ -364,6 +372,14 @@ where
         proof: &Self::Proof,
         challenger: &mut Challenger,
     ) -> Result<(), Self::Error> {
+        #[cfg(feature = "print-log")]
+        println!(
+            "verify shapes: {:?}",
+            rounds
+                .iter()
+                .map(|(_, lis)| lis.iter().map(|(domain, _)| domain.size()).collect_vec())
+                .collect_vec()
+        );
         // Batch combination challenge
         let alpha: Challenge = challenger.sample_ext_element();
 
@@ -448,6 +464,15 @@ where
                     debug_assert!(ro.is_zero());
                 }
 
+                #[cfg(feature = "print-log")]
+                println!(
+                    "reduced_openings: {:?}",
+                    reduced_openings
+                        .iter()
+                        .rev()
+                        .map(|(lh, _)| lh)
+                        .collect_vec()
+                );
                 // Return reduced openings descending by log_height.
                 Ok(reduced_openings
                     .into_iter()

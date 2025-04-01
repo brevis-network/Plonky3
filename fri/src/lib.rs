@@ -1,6 +1,6 @@
 //! An implementation of the FRI low-degree test (LDT).
 
-#![no_std]
+#![cfg_attr(not(feature = "print-log"), no_std)]
 
 extern crate alloc;
 

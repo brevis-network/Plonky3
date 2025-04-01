@@ -34,6 +34,10 @@ p3-symmetric.workspace = true
 criterion.workspace = true
 rand_chacha.workspace = true
 
+[features]
+default = []
+print-log = []
+
 [[bench]]
 name = "fold_even_odd"
 harness = false
