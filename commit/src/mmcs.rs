@@ -18,8 +18,8 @@ use serde::Serialize;
 /// useful in the FRI protocol. See the documentation for `open_batch` for more details.
 pub trait Mmcs<T: Send + Sync>: Clone {
     type ProverData<M>;
-    type Commitment: Clone + Serialize + DeserializeOwned;
-    type Proof: Clone + Serialize + DeserializeOwned;
+    type Commitment: Clone + Serialize + DeserializeOwned + Sync + Send;
+    type Proof: Clone + Serialize + DeserializeOwned + Sync + Send;
     type Error: Debug;
 
     fn commit<M: Matrix<T>>(&self, inputs: Vec<M>) -> (Self::Commitment, Self::ProverData<M>);
