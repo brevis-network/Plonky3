@@ -139,6 +139,8 @@ where
     Challenge: TwoAdicField + ExtensionField<Val>,
     Challenger:
         FieldChallenger<Val> + CanObserve<FriMmcs::Commitment> + GrindingChallenger<Witness = Val>,
+    <InputMmcs as Mmcs<Val>>::ProverData<RowMajorMatrix<Val>>: Clone + Serialize,
+    for<'de> <InputMmcs as Mmcs<Val>>::ProverData<RowMajorMatrix<Val>>: Deserialize<'de>,
 {
     type Domain = TwoAdicMultiplicativeCoset<Val>;
     type Commitment = InputMmcs::Commitment;

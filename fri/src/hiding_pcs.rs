@@ -11,6 +11,7 @@ use p3_matrix::horizontally_truncated::HorizontallyTruncated;
 use p3_matrix::Matrix;
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use crate::verifier::FriError;
@@ -54,6 +55,8 @@ where
     Challenger:
         FieldChallenger<Val> + CanObserve<FriMmcs::Commitment> + GrindingChallenger<Witness = Val>,
     R: Rng + Send + Sync,
+    <InputMmcs as Mmcs<Val>>::ProverData<RowMajorMatrix<Val>>: Clone + Serialize,
+    for<'de> <InputMmcs as Mmcs<Val>>::ProverData<RowMajorMatrix<Val>>: Deserialize<'de>,
 {
     type Domain = TwoAdicMultiplicativeCoset<Val>;
     type Commitment = InputMmcs::Commitment;
