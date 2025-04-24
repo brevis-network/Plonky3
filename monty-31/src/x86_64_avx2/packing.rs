@@ -475,6 +475,8 @@ impl<FP: FieldParameters> FieldAlgebra for PackedMontyField31AVX2<FP> {
     const ZERO: Self = Self::broadcast(MontyField31::ZERO);
     const ONE: Self = Self::broadcast(MontyField31::ONE);
     const TWO: Self = Self::broadcast(MontyField31::TWO);
+    const FOUR: Self = Self::broadcast(MontyField31::FOUR);
+    const FIVE: Self = Self::broadcast(MontyField31::FIVE);
     const NEG_ONE: Self = Self::broadcast(MontyField31::NEG_ONE);
 
     #[inline]
