@@ -29,7 +29,7 @@ use crate::{prover, FriConfig, FriGenericConfig, FriProof};
 pub struct TwoAdicFriPcs<Val, Dft, InputMmcs, FriMmcs> {
     dft: Dft,
     mmcs: InputMmcs,
-    fri: FriConfig<FriMmcs>,
+    pub fri: FriConfig<FriMmcs>,
     _phantom: PhantomData<Val>,
 }
 

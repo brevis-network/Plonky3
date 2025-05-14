@@ -19,12 +19,12 @@ use tracing::instrument;
 /// see `MerkleTreeMmcs`.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MerkleTree<F, W, M, const DIGEST_ELEMS: usize> {
-    pub(crate) leaves: Vec<M>,
+    pub leaves: Vec<M>,
     // Enable serialization for this type whenever the underlying array type supports it (len 1-32).
     #[serde(bound(serialize = "[W; DIGEST_ELEMS]: Serialize"))]
     // Enable deserialization for this type whenever the underlying array type supports it (len 1-32).
     #[serde(bound(deserialize = "[W; DIGEST_ELEMS]: Deserialize<'de>"))]
-    pub(crate) digest_layers: Vec<Vec<[W; DIGEST_ELEMS]>>,
+    pub digest_layers: Vec<Vec<[W; DIGEST_ELEMS]>>,
     _phantom: PhantomData<F>,
 }
 
