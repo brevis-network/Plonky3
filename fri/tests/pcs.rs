@@ -1,4 +1,4 @@
-use itertools::{izip, Itertools};
+use itertools::{Itertools, izip};
 use p3_baby_bear::{BabyBear, Poseidon2BabyBear};
 use p3_challenger::{CanObserve, DuplexChallenger, FieldChallenger};
 use p3_commit::{ExtensionMmcs, Pcs, PolynomialSpace};
@@ -9,12 +9,12 @@ use p3_fri::{FriConfig, TwoAdicFriPcs};
 use p3_matrix::dense::RowMajorMatrix;
 use p3_merkle_tree::MerkleTreeMmcs;
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
-use rand::distributions::{Distribution, Standard};
+use rand::distr::{Distribution, StandardUniform};
+use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha20Rng;
 
 fn seeded_rng() -> impl Rng {
-    ChaCha20Rng::seed_from_u64(0)
+    SmallRng::seed_from_u64(0)
 }
 
 fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
@@ -24,7 +24,7 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     P: Pcs<Challenge, Challenger>,
     P::Domain: PolynomialSpace<Val = Val>,
     Val: Field,
-    Standard: Distribution<Val>,
+    StandardUniform: Distribution<Val>,
     Challenge: ExtensionField<Val>,
     Challenger: Clone + CanObserve<P::Commitment> + FieldChallenger<Val>,
 {
@@ -41,7 +41,7 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
                 .map(|&log_degree| {
                     let d = 1 << log_degree;
                     // random width 5-15
-                    let width = 5 + rng.gen_range(0..=10);
+                    let width = 5 + rng.random_range(0..=10);
                     (
                         pcs.natural_domain_for_degree(d),
                         RowMajorMatrix::<Val>::rand(&mut rng, d, width),
@@ -53,13 +53,13 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
 
     let (commits_by_round, data_by_round): (Vec<_>, Vec<_>) = domains_and_polys_by_round
         .iter()
-        .map(|domains_and_polys| pcs.commit(domains_and_polys.clone()))
+        .map(|domains_and_polys| pcs.commit(domains_and_polys.iter().cloned()))
         .unzip();
     assert_eq!(commits_by_round.len(), num_rounds);
     assert_eq!(data_by_round.len(), num_rounds);
     p_challenger.observe_slice(&commits_by_round);
 
-    let zeta: Challenge = p_challenger.sample_ext_element();
+    let zeta: Challenge = p_challenger.sample_algebra_element();
 
     let points_by_round = log_degrees_by_round
         .iter()
@@ -72,7 +72,7 @@ fn do_test_fri_pcs<Val, Challenge, Challenger, P>(
     // Verify the proof.
     let mut v_challenger = challenger.clone();
     v_challenger.observe_slice(&commits_by_round);
-    let verifier_zeta: Challenge = v_challenger.sample_ext_element();
+    let verifier_zeta: Challenge = v_challenger.sample_algebra_element();
     assert_eq!(verifier_zeta, zeta);
 
     let commits_and_claims_by_round = izip!(
@@ -178,13 +178,14 @@ mod babybear_fri_pcs {
 
         let fri_config = FriConfig {
             log_blowup,
+            log_final_poly_len: 0,
             num_queries: 10,
             proof_of_work_bits: 8,
             mmcs: challenge_mmcs,
         };
 
         let pcs = MyPcs::new(Dft::default(), val_mmcs, fri_config);
-        (pcs, Challenger::new(perm.clone()))
+        (pcs, Challenger::new(perm))
     }
 
     mod blowup_1 {
@@ -196,13 +197,13 @@ mod babybear_fri_pcs {
 }
 
 mod m31_fri_pcs {
-    use std::marker::PhantomData;
+    use core::marker::PhantomData;
 
     use p3_challenger::{HashChallenger, SerializingChallenger32};
     use p3_circle::CirclePcs;
     use p3_keccak::Keccak256Hash;
     use p3_mersenne_31::Mersenne31;
-    use p3_symmetric::{CompressionFunctionFromHasher, SerializingHasher32};
+    use p3_symmetric::{CompressionFunctionFromHasher, SerializingHasher};
 
     use super::*;
 
@@ -210,7 +211,7 @@ mod m31_fri_pcs {
     type Challenge = BinomialExtensionField<Mersenne31, 3>;
 
     type ByteHash = Keccak256Hash;
-    type FieldHash = SerializingHasher32<ByteHash>;
+    type FieldHash = SerializingHasher<ByteHash>;
 
     type MyCompress = CompressionFunctionFromHasher<ByteHash, 2, 32>;
 
@@ -230,6 +231,7 @@ mod m31_fri_pcs {
         let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
         let fri_config = FriConfig {
             log_blowup,
+            log_final_poly_len: 0,
             num_queries: 10,
             proof_of_work_bits: 8,
             mmcs: challenge_mmcs,

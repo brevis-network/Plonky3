@@ -2,13 +2,15 @@
 //!
 //! Reference: https://github.com/HorizenLabs/poseidon2/blob/main/plain_implementations/src/poseidon2/poseidon2_instance_bn256.rs
 
-use std::sync::OnceLock;
+extern crate alloc;
 
-use p3_field::FieldAlgebra;
+use alloc::vec::Vec;
+
+use p3_field::PrimeCharacteristicRing;
 use p3_poseidon2::{
-    add_rc_and_sbox_generic, external_initial_permute_state, external_terminal_permute_state,
-    internal_permute_state, matmul_internal, ExternalLayer, ExternalLayerConstants,
-    ExternalLayerConstructor, HLMDSMat4, InternalLayer, InternalLayerConstructor, Poseidon2,
+    ExternalLayer, ExternalLayerConstants, ExternalLayerConstructor, HLMDSMat4, InternalLayer,
+    InternalLayerConstructor, Poseidon2, add_rc_and_sbox_generic, external_initial_permute_state,
+    external_terminal_permute_state, internal_permute_state,
 };
 
 use crate::Bn254Fr;
@@ -32,12 +34,6 @@ pub type Poseidon2Bn254<const WIDTH: usize> = Poseidon2<
 /// Currently we only support a single width for Poseidon2 BN254.
 const BN254_WIDTH: usize = 3;
 
-#[inline]
-fn get_diffusion_matrix_3() -> &'static [Bn254Fr; 3] {
-    static MAT_DIAG3_M_1: OnceLock<[Bn254Fr; 3]> = OnceLock::new();
-    MAT_DIAG3_M_1.get_or_init(|| [Bn254Fr::ONE, Bn254Fr::ONE, Bn254Fr::TWO])
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct Poseidon2InternalLayerBn254 {
     internal_constants: Vec<Bn254Fr>,
@@ -49,14 +45,27 @@ impl InternalLayerConstructor<Bn254Fr> for Poseidon2InternalLayerBn254 {
     }
 }
 
+/// A faster version of `matmul_internal` making use of the fact that
+/// the internal matrix is equal to:
+/// ```ignore
+///                             [2, 1, 1]
+///     1 + Diag([1, 1, 2]) =   [1, 2, 1]
+///                             [1, 1, 3]
+/// ```
+fn bn254_matmul_internal(state: &mut [Bn254Fr; 3]) {
+    // We bracket in this way as the s-box is applied to state[0] so this lets us
+    // begin this computation before the s-box finishes.
+    let sum = state[0] + (state[1] + state[2]);
+
+    state[0] += sum;
+    state[1] += sum;
+    state[2] = state[2].double() + sum;
+}
+
 impl InternalLayer<Bn254Fr, BN254_WIDTH, BN254_S_BOX_DEGREE> for Poseidon2InternalLayerBn254 {
     /// Perform the internal layers of the Poseidon2 permutation on the given state.
     fn permute_state(&self, state: &mut [Bn254Fr; BN254_WIDTH]) {
-        internal_permute_state::<Bn254Fr, BN254_WIDTH, BN254_S_BOX_DEGREE>(
-            state,
-            |x| matmul_internal(x, *get_diffusion_matrix_3()),
-            &self.internal_constants,
-        )
+        internal_permute_state(state, bn254_matmul_internal, &self.internal_constants)
     }
 }
 
@@ -65,7 +74,7 @@ pub type Poseidon2ExternalLayerBn254<const WIDTH: usize> = ExternalLayerConstant
 impl<const WIDTH: usize> ExternalLayerConstructor<Bn254Fr, WIDTH>
     for Poseidon2ExternalLayerBn254<WIDTH>
 {
-    fn new_from_constants(external_constants: ExternalLayerConstants<Bn254Fr, WIDTH>) -> Self {
+    fn new_from_constants(external_constants: Self) -> Self {
         external_constants
     }
 }
@@ -78,7 +87,7 @@ impl<const WIDTH: usize> ExternalLayer<Bn254Fr, WIDTH, BN254_S_BOX_DEGREE>
         external_initial_permute_state(
             state,
             self.get_initial_constants(),
-            add_rc_and_sbox_generic::<_, BN254_S_BOX_DEGREE>,
+            add_rc_and_sbox_generic,
             &HLMDSMat4,
         );
     }
@@ -88,7 +97,7 @@ impl<const WIDTH: usize> ExternalLayer<Bn254Fr, WIDTH, BN254_S_BOX_DEGREE>
         external_terminal_permute_state(
             state,
             self.get_terminal_constants(),
-            add_rc_and_sbox_generic::<_, BN254_S_BOX_DEGREE>,
+            add_rc_and_sbox_generic,
             &HLMDSMat4,
         );
     }
@@ -96,10 +105,11 @@ impl<const WIDTH: usize> ExternalLayer<Bn254Fr, WIDTH, BN254_S_BOX_DEGREE>
 
 #[cfg(test)]
 mod tests {
-    use ff::PrimeField;
+    use num_bigint::BigUint;
     use p3_poseidon2::ExternalLayerConstants;
     use p3_symmetric::Permutation;
-    use rand::Rng;
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
     use zkhash::ark_ff::{BigInteger, PrimeField as ark_PrimeField};
     use zkhash::fields::bn256::FpBN256 as ark_FpBN256;
     use zkhash::poseidon2::poseidon2::Poseidon2 as Poseidon2Ref;
@@ -109,15 +119,10 @@ mod tests {
     use crate::FFBn254Fr;
 
     fn bn254_from_ark_ff(input: ark_FpBN256) -> Bn254Fr {
+        let mut full_bytes = [0; 32];
         let bytes = input.into_bigint().to_bytes_le();
-
-        let mut res = <FFBn254Fr as PrimeField>::Repr::default();
-
-        for (i, digit) in res.as_mut().iter_mut().enumerate() {
-            *digit = bytes[i];
-        }
-
-        let value = FFBn254Fr::from_repr(res);
+        full_bytes[..bytes.len()].copy_from_slice(&bytes);
+        let value = FFBn254Fr::from_bytes(&full_bytes);
 
         if value.is_some().into() {
             Bn254Fr {
@@ -128,6 +133,11 @@ mod tests {
         }
     }
 
+    fn ark_ff_from_bn254(input: Bn254Fr) -> ark_FpBN256 {
+        let bigint = BigUint::from_bytes_le(&input.value.to_bytes());
+        ark_FpBN256::from(bigint)
+    }
+
     #[test]
     fn test_poseidon2_bn254() {
         const WIDTH: usize = 3;
@@ -136,7 +146,7 @@ mod tests {
 
         type F = Bn254Fr;
 
-        let mut rng = rand::thread_rng();
+        let mut rng = SmallRng::seed_from_u64(1);
 
         // Poiseidon2 reference implementation from zkhash repo.
         let poseidon2_ref = Poseidon2Ref::new(&POSEIDON2_BN256_PARAMS);
@@ -146,7 +156,7 @@ mod tests {
             .iter()
             .map(|vec| {
                 vec.iter()
-                    .cloned()
+                    .copied()
                     .map(bn254_from_ark_ff)
                     .collect::<Vec<_>>()
                     .try_into()
@@ -167,26 +177,14 @@ mod tests {
         // Our Poseidon2 implementation.
         let poseidon2 = Poseidon2Bn254::new(external_round_constants, internal_round_constants);
 
-        // Generate random input and convert to both Goldilocks field formats.
-        let input_ark_ff = rng.gen::<[ark_FpBN256; WIDTH]>();
-        let input: [Bn254Fr; 3] = input_ark_ff
-            .iter()
-            .cloned()
-            .map(bn254_from_ark_ff)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+        // Generate random input and convert to both field formats.
+        let input = rng.random::<[F; WIDTH]>();
+        let input_ark_ff = input.map(ark_ff_from_bn254);
 
         // Run reference implementation.
-        let output_ref = poseidon2_ref.permutation(&input_ark_ff);
-
-        let expected: [F; WIDTH] = output_ref
-            .iter()
-            .cloned()
-            .map(bn254_from_ark_ff)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+        let output_ref: [ark_FpBN256; WIDTH] =
+            poseidon2_ref.permutation(&input_ark_ff).try_into().unwrap();
+        let expected: [F; WIDTH] = output_ref.map(bn254_from_ark_ff);
 
         // Run our implementation.
         let mut output = input;

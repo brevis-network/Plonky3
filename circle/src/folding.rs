@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 use itertools::Itertools;
 use p3_commit::Mmcs;
 use p3_field::extension::ComplexExtendable;
-use p3_field::{batch_multiplicative_inverse, ExtensionField};
+use p3_field::{ExtensionField, batch_multiplicative_inverse};
 use p3_fri::FriGenericConfig;
 use p3_matrix::Matrix;
 use p3_util::{log2_strict_usize, reverse_bits_len};
@@ -24,7 +24,7 @@ pub(crate) type CircleFriConfig<Val, Challenge, InputMmcs, FriMmcs> = CircleFriG
 >;
 
 impl<F: ComplexExtendable, EF: ExtensionField<F>, InputProof, InputError: Debug>
-    FriGenericConfig<EF> for CircleFriGenericConfig<F, InputProof, InputError>
+    FriGenericConfig<F, EF> for CircleFriGenericConfig<F, InputProof, InputError>
 {
     type InputProof = InputProof;
     type InputError = InputError;
@@ -133,7 +133,8 @@ mod tests {
     use p3_field::extension::BinomialExtensionField;
     use p3_matrix::dense::RowMajorMatrix;
     use p3_mersenne_31::Mersenne31;
-    use rand::{random, thread_rng};
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
 
     use super::*;
     use crate::CircleEvaluations;
@@ -143,19 +144,20 @@ mod tests {
 
     #[test]
     fn fold_matrix_same_as_row() {
+        let mut rng = SmallRng::seed_from_u64(1);
         let log_folded_height = 5;
-        let m = RowMajorMatrix::<EF>::rand(&mut thread_rng(), 1 << log_folded_height, 2);
-        let beta: EF = random();
+        let m = RowMajorMatrix::<EF>::rand(&mut rng, 1 << log_folded_height, 2);
+        let beta: EF = rng.random();
 
         let mat_y_folded = fold_y::<F, EF>(beta, m.as_view());
         let row_y_folded = (0..(1 << log_folded_height))
-            .map(|i| fold_y_row::<F, EF>(i, log_folded_height, beta, m.row(i)))
+            .map(|i| fold_y_row::<F, EF>(i, log_folded_height, beta, m.row(i).unwrap().into_iter()))
             .collect_vec();
         assert_eq!(mat_y_folded, row_y_folded);
 
         let mat_x_folded = fold_x::<F, EF>(beta, m.as_view());
         let row_x_folded = (0..(1 << log_folded_height))
-            .map(|i| fold_x_row::<F, EF>(i, log_folded_height, beta, m.row(i)))
+            .map(|i| fold_x_row::<F, EF>(i, log_folded_height, beta, m.row(i).unwrap().into_iter()))
             .collect_vec();
         assert_eq!(mat_x_folded, row_x_folded);
     }
@@ -170,18 +172,19 @@ mod tests {
             .dim()
         };
 
+        let mut rng = SmallRng::seed_from_u64(1);
         for (log_n, log_blowup) in iproduct!(3..6, 1..4) {
             let mut values = CircleEvaluations::evaluate(
                 CircleDomain::standard(log_n + log_blowup),
-                RowMajorMatrix::<F>::rand(&mut thread_rng(), 1 << log_n, 1),
+                RowMajorMatrix::rand(&mut rng, 1 << log_n, 1),
             )
             .to_cfft_order()
             .values;
 
-            values = fold_y(random(), RowMajorMatrix::new(values, 2));
+            values = fold_y(rng.random(), RowMajorMatrix::new(values, 2));
             assert_eq!(vec_dim(&values), values.len() >> log_blowup);
             for _ in 0..(log_n - 1) {
-                values = fold_x(random(), RowMajorMatrix::new(values, 2));
+                values = fold_x(rng.random(), RowMajorMatrix::new(values, 2));
                 assert_eq!(vec_dim(&values), values.len() >> log_blowup);
             }
         }
