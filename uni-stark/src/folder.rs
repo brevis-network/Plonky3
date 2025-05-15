@@ -1,7 +1,7 @@
 use alloc::vec::Vec;
 
 use p3_air::{AirBuilder, AirBuilderWithPublicValues};
-use p3_field::FieldAlgebra;
+use p3_field::{BasedVectorSpace, PackedField};
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
 
@@ -15,6 +15,7 @@ pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
     pub is_last_row: PackedVal<SC>,
     pub is_transition: PackedVal<SC>,
     pub alpha_powers: &'a [SC::Challenge],
+    pub decomposed_alpha_powers: &'a [Vec<Val<SC>>],
     pub accumulator: PackedChallenge<SC>,
     pub constraint_index: usize,
 }
@@ -53,6 +54,8 @@ impl<'a, SC: StarkGenericConfig> AirBuilder for ProverConstraintFolder<'a, SC> {
         self.is_last_row
     }
 
+    /// # Panics
+    /// This function panics if `size` is not `2`.
     #[inline]
     fn is_transition_window(&self, size: usize) -> Self::Expr {
         if size == 2 {
@@ -66,12 +69,23 @@ impl<'a, SC: StarkGenericConfig> AirBuilder for ProverConstraintFolder<'a, SC> {
     fn assert_zero<I: Into<Self::Expr>>(&mut self, x: I) {
         let x: PackedVal<SC> = x.into();
         let alpha_power = self.alpha_powers[self.constraint_index];
-        self.accumulator += PackedChallenge::<SC>::from_f(alpha_power) * x;
+        self.accumulator += Into::<PackedChallenge<SC>>::into(alpha_power) * x;
         self.constraint_index += 1;
+    }
+
+    #[inline]
+    fn assert_zeros<const N: usize, I: Into<Self::Expr>>(&mut self, array: [I; N]) {
+        let expr_array: [Self::Expr; N] = array.map(Into::into);
+        self.accumulator += PackedChallenge::<SC>::from_basis_coefficients_fn(|i| {
+            let alpha_powers = &self.decomposed_alpha_powers[i]
+                [self.constraint_index..(self.constraint_index + N)];
+            PackedVal::<SC>::packed_linear_combination::<N>(alpha_powers, &expr_array)
+        });
+        self.constraint_index += N;
     }
 }
 
-impl<'a, SC: StarkGenericConfig> AirBuilderWithPublicValues for ProverConstraintFolder<'a, SC> {
+impl<SC: StarkGenericConfig> AirBuilderWithPublicValues for ProverConstraintFolder<'_, SC> {
     type PublicVar = Self::F;
 
     #[inline]
@@ -98,6 +112,8 @@ impl<'a, SC: StarkGenericConfig> AirBuilder for VerifierConstraintFolder<'a, SC>
         self.is_last_row
     }
 
+    /// # Panics
+    /// This function panics if `size` is not `2`.
     fn is_transition_window(&self, size: usize) -> Self::Expr {
         if size == 2 {
             self.is_transition
@@ -113,7 +129,7 @@ impl<'a, SC: StarkGenericConfig> AirBuilder for VerifierConstraintFolder<'a, SC>
     }
 }
 
-impl<'a, SC: StarkGenericConfig> AirBuilderWithPublicValues for VerifierConstraintFolder<'a, SC> {
+impl<SC: StarkGenericConfig> AirBuilderWithPublicValues for VerifierConstraintFolder<'_, SC> {
     type PublicVar = Self::F;
 
     fn public_values(&self) -> &[Self::F] {

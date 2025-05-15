@@ -2,13 +2,14 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::iter;
 
-use itertools::{izip, Itertools};
+use itertools::{Itertools, izip};
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
 use p3_commit::Mmcs;
-use p3_field::{ExtensionField, Field};
+use p3_dft::{Radix2Dit, TwoAdicSubgroupDft};
+use p3_field::{ExtensionField, Field, TwoAdicField};
 use p3_matrix::dense::RowMajorMatrix;
-use p3_util::log2_strict_usize;
-use tracing::{info_span, instrument};
+use p3_util::{log2_strict_usize, reverse_slice_index_bits};
+use tracing::{debug_span, info_span, instrument};
 
 use crate::{CommitPhaseProofStep, FriConfig, FriGenericConfig, FriProof, QueryProof};
 
@@ -22,18 +23,25 @@ pub fn prove<G, Val, Challenge, M, Challenger>(
 ) -> FriProof<Challenge, M, Challenger::Witness, G::InputProof>
 where
     Val: Field,
-    Challenge: ExtensionField<Val>,
+    Challenge: ExtensionField<Val> + TwoAdicField,
     M: Mmcs<Challenge>,
     Challenger: FieldChallenger<Val> + GrindingChallenger + CanObserve<M::Commitment>,
-    G: FriGenericConfig<Challenge>,
+    G: FriGenericConfig<Val, Challenge>,
 {
-    // check sorted descending
-    assert!(inputs
-        .iter()
-        .tuple_windows()
-        .all(|(l, r)| l.len() >= r.len()));
+    assert!(!inputs.is_empty());
+    assert!(
+        inputs
+            .iter()
+            .tuple_windows()
+            .all(|(l, r)| l.len() >= r.len()),
+        "Inputs are not sorted in descending order of length."
+    );
 
     let log_max_height = log2_strict_usize(inputs[0].len());
+    let log_min_height = log2_strict_usize(inputs.last().unwrap().len());
+    if config.log_final_poly_len > 0 {
+        assert!(log_min_height > config.log_final_poly_len + config.log_blowup);
+    }
 
     let commit_phase_result = commit_phase(g, config, inputs, challenger);
 
@@ -64,7 +72,7 @@ where
 struct CommitPhaseResult<F: Field, M: Mmcs<F>> {
     commits: Vec<M::Commitment>,
     data: Vec<M::ProverData<RowMajorMatrix<F>>>,
-    final_poly: F,
+    final_poly: Vec<F>,
 }
 
 #[instrument(name = "commit phase", skip_all)]
@@ -76,22 +84,22 @@ fn commit_phase<G, Val, Challenge, M, Challenger>(
 ) -> CommitPhaseResult<Challenge, M>
 where
     Val: Field,
-    Challenge: ExtensionField<Val>,
+    Challenge: ExtensionField<Val> + TwoAdicField,
     M: Mmcs<Challenge>,
     Challenger: FieldChallenger<Val> + CanObserve<M::Commitment>,
-    G: FriGenericConfig<Challenge>,
+    G: FriGenericConfig<Val, Challenge>,
 {
     let mut inputs_iter = inputs.into_iter().peekable();
     let mut folded = inputs_iter.next().unwrap();
     let mut commits = vec![];
     let mut data = vec![];
 
-    while folded.len() > config.blowup() {
+    while folded.len() > config.blowup() * config.final_poly_len() {
         let leaves = RowMajorMatrix::new(folded, 2);
         let (commit, prover_data) = config.mmcs.commit_matrix(leaves);
         challenger.observe(commit.clone());
 
-        let beta: Challenge = challenger.sample_ext_element();
+        let beta: Challenge = challenger.sample_algebra_element();
         // We passed ownership of `current` to the MMCS, so get a reference to it
         let leaves = config.mmcs.get_matrices(&prover_data).pop().unwrap();
         folded = g.fold_matrix(beta, leaves.as_view());
@@ -104,13 +112,32 @@ where
         }
     }
 
-    // We should be left with `blowup` evaluations of a constant polynomial.
-    assert_eq!(folded.len(), config.blowup());
-    let final_poly = folded[0];
-    for x in folded {
-        assert_eq!(x, final_poly);
+    // After repeated folding steps, we end up working over a coset hJ instead of the original
+    // domain. The IDFT we apply operates over a subgroup J, not hJ. This means the polynomial we
+    // recover is G(x), where G(x) = F(hx), and F is the polynomial whose evaluations we actually
+    // observed. For our current construction, this does not cause issues since degree properties
+    // and zero-checks remain valid. If we changed our domain construction (e.g., using multiple
+    // cosets), we would need to carefully reconsider these assumptions.
+
+    reverse_slice_index_bits(&mut folded);
+    // TODO: For better performance, we could run the IDFT on only the first half
+    //       (or less, depending on `log_blowup`) of `final_poly`.
+    let final_poly = debug_span!("idft final poly").in_scope(|| Radix2Dit::default().idft(folded));
+
+    // The evaluation domain is "blown-up" relative to the polynomial degree of `final_poly`,
+    // so all coefficients after the first final_poly_len should be zero.
+    debug_assert!(
+        final_poly
+            .iter()
+            .skip(1 << config.log_final_poly_len)
+            .all(|x| x.is_zero()),
+        "All coefficients beyond final_poly_len must be zero"
+    );
+
+    // Observe all coefficients of the final polynomial.
+    for &x in &final_poly {
+        challenger.observe_algebra_element(x);
     }
-    challenger.observe_ext_element(final_poly);
 
     CommitPhaseResult {
         commits,
@@ -136,9 +163,10 @@ where
             let index_i_sibling = index_i ^ 1;
             let index_pair = index_i >> 1;
 
-            let (mut opened_rows, opening_proof) = config.mmcs.open_batch(index_pair, commit);
+            let (mut opened_rows, opening_proof) =
+                config.mmcs.open_batch(index_pair, commit).unpack();
             assert_eq!(opened_rows.len(), 1);
-            let opened_row = opened_rows.pop().unwrap();
+            let opened_row = &opened_rows.pop().unwrap();
             assert_eq!(opened_row.len(), 2, "Committed data should be in pairs");
             let sibling_value = opened_row[index_i_sibling % 2];
 

@@ -1,6 +1,6 @@
 //! Implementation of DFT for `Mersenne31`.
 //!
-//! Strategy follows: https://www.robinscheibler.org/2013/02/13/real-fft.html
+//! Strategy follows: `<https://www.robinscheibler.org/2013/02/13/real-fft.html>`
 //! In short, fold a Mersenne31 DFT of length n into a Mersenne31Complex DFT
 //! of length n/2. Some pre/post-processing is necessary so that the result
 //! of the transform behaves as expected wrt the convolution theorem etc.
@@ -12,12 +12,12 @@
 
 use alloc::vec::Vec;
 
-use itertools::{izip, Itertools};
+use itertools::{Itertools, izip};
 use p3_dft::TwoAdicSubgroupDft;
 use p3_field::extension::Complex;
-use p3_field::{Field, FieldAlgebra, TwoAdicField};
-use p3_matrix::dense::RowMajorMatrix;
+use p3_field::{Field, PrimeCharacteristicRing, TwoAdicField};
 use p3_matrix::Matrix;
+use p3_matrix::dense::RowMajorMatrix;
 use p3_util::log2_strict_usize;
 
 use crate::Mersenne31;
@@ -47,7 +47,7 @@ fn dft_preprocess(input: RowMajorMatrix<F>) -> RowMajorMatrix<C> {
                 // two-element column into a Mersenne31Complex
                 // treating the first row as the real part and the
                 // second row as the imaginary part.
-                row_0.zip(row_1).map(|(x, y)| C::new(x, y))
+                row_0.zip(row_1).map(|(x, y)| C::new_complex(x, y))
             })
             .collect(),
         input.width(),
@@ -70,20 +70,36 @@ fn dft_postprocess(input: RowMajorMatrix<C>) -> RowMajorMatrix<C> {
     let mut omega_j = omega;
 
     let mut output = Vec::with_capacity((h + 1) * input.width());
-    output.extend(input.first_row().map(|x| C::new_real(x.real() + x.imag())));
+    output.extend(
+        input
+            .first_row()
+            .unwrap() // The matrix is non-empty so this unwrap should never panic.
+            .into_iter()
+            .map(|x| C::new_real(x.real() + x.imag())),
+    );
 
     for j in 1..h {
-        let row = izip!(input.row(j), input.row(h - j)).map(|(x, y)| {
+        let row_iter = unsafe {
+            // Safety: We know that 0 < j < h = input.height()
+            izip!(input.row_unchecked(j), input.row_unchecked(h - j))
+        };
+        let row = row_iter.map(|(x, y)| {
             let even = x + y.conjugate();
             // odd = (x - y.conjugate()) * -i
-            let odd = C::new(x.imag() + y.imag(), y.real() - x.real());
+            let odd = C::new_complex(x.imag() + y.imag(), y.real() - x.real());
             (even + odd * omega_j).halve()
         });
         output.extend(row);
         omega_j *= omega;
     }
 
-    output.extend(input.first_row().map(|x| C::new_real(x.real() - x.imag())));
+    output.extend(
+        input
+            .first_row()
+            .unwrap() // The matrix is non-empty so this unwrap should never panic.
+            .into_iter()
+            .map(|x| C::new_real(x.real() - x.imag())),
+    );
     debug_assert_eq!(output.len(), (h + 1) * input.width());
     RowMajorMatrix::new(output, input.width())
 }
@@ -106,10 +122,14 @@ fn idft_preprocess(input: RowMajorMatrix<C>) -> RowMajorMatrix<C> {
     let mut output = Vec::with_capacity(h * input.width());
     // TODO: Specialise j = 0 and j = n (which we know must be real)?
     for j in 0..h {
-        let row = izip!(input.row(j), input.row(h - j)).map(|(x, y)| {
+        let row_iter = unsafe {
+            // Safety: We know that 0 = j < h < input.height()
+            izip!(input.row_unchecked(j), input.row_unchecked(h - j))
+        };
+        let row = row_iter.map(|(x, y)| {
             let even = x + y.conjugate();
             // odd = (x - y.conjugate()) * -i
-            let odd = C::new(x.imag() + y.imag(), y.real() - x.real());
+            let odd = C::new_complex(x.imag() + y.imag(), y.real() - x.real());
             (even - odd * omega_j).halve()
         });
         output.extend(row);
@@ -173,8 +193,9 @@ impl Mersenne31Dft {
 
 #[cfg(test)]
 mod tests {
-    use rand::distributions::{Distribution, Standard};
-    use rand::{thread_rng, Rng};
+    use rand::distr::{Distribution, StandardUniform};
+    use rand::rngs::SmallRng;
+    use rand::{Rng, SeedableRng};
 
     use super::*;
     use crate::Mersenne31ComplexRadix2Dit;
@@ -185,11 +206,12 @@ mod tests {
     #[test]
     fn consistency()
     where
-        Standard: Distribution<Base>,
+        StandardUniform: Distribution<Base>,
     {
         const N: usize = 1 << 12;
-        let input = thread_rng()
-            .sample_iter(Standard)
+        let rng = SmallRng::seed_from_u64(1);
+        let input = rng
+            .sample_iter(StandardUniform)
             .take(N)
             .collect::<Vec<Base>>();
         let input = RowMajorMatrix::new_col(input);
@@ -201,19 +223,16 @@ mod tests {
     #[test]
     fn convolution()
     where
-        Standard: Distribution<Base>,
+        StandardUniform: Distribution<Base>,
     {
         const N: usize = 1 << 6;
-        let a = thread_rng()
-            .sample_iter(Standard)
-            .take(N)
+        let rng = SmallRng::seed_from_u64(1);
+        let v = rng
+            .sample_iter(StandardUniform)
+            .take(2 * N)
             .collect::<Vec<Base>>();
-        let a = RowMajorMatrix::new_col(a);
-        let b = thread_rng()
-            .sample_iter(Standard)
-            .take(N)
-            .collect::<Vec<Base>>();
-        let b = RowMajorMatrix::new_col(b);
+        let a = RowMajorMatrix::new_col(v[..N].to_vec());
+        let b = RowMajorMatrix::new_col(v[N..].to_vec());
 
         let fft_a = Mersenne31Dft::dft_batch::<Dft>(a.clone());
         let fft_b = Mersenne31Dft::dft_batch::<Dft>(b.clone());

@@ -2,14 +2,15 @@ use alloc::vec::Vec;
 use core::cell::RefCell;
 
 use itertools::Itertools;
-use p3_commit::Mmcs;
+use p3_commit::{BatchOpening, BatchOpeningRef, Mmcs};
 use p3_field::PackedValue;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::stack::HorizontalPair;
 use p3_matrix::{Dimensions, Matrix};
 use p3_symmetric::{CryptographicHasher, Hash, PseudoCompressionFunction};
-use rand::distributions::{Distribution, Standard};
+use p3_util::zip_eq::zip_eq;
 use rand::Rng;
+use rand::distr::{Distribution, StandardUniform};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -44,11 +45,11 @@ pub struct MerkleTreeHidingMmcs<P, PW, H, C, R, const DIGEST_ELEMS: usize, const
 impl<P, PW, H, C, R, const DIGEST_ELEMS: usize, const SALT_ELEMS: usize>
     MerkleTreeHidingMmcs<P, PW, H, C, R, DIGEST_ELEMS, SALT_ELEMS>
 {
-    pub fn new(hash: H, compress: C, rng: R) -> Self {
+    pub const fn new(hash: H, compress: C, rng: R) -> Self {
         let inner = MerkleTreeMmcs::new(hash, compress);
         Self {
             inner,
-            rng: rng.into(),
+            rng: RefCell::new(rng),
         }
     }
 }
@@ -59,16 +60,16 @@ where
     P: PackedValue,
     P::Value: Serialize + DeserializeOwned,
     PW: PackedValue,
-    H: CryptographicHasher<P::Value, [PW::Value; DIGEST_ELEMS]>,
-    H: CryptographicHasher<P, [PW; DIGEST_ELEMS]>,
-    H: Sync,
-    C: PseudoCompressionFunction<[PW::Value; DIGEST_ELEMS], 2>,
-    C: PseudoCompressionFunction<[PW; DIGEST_ELEMS], 2>,
-    C: Sync,
+    H: CryptographicHasher<P::Value, [PW::Value; DIGEST_ELEMS]>
+        + CryptographicHasher<P, [PW; DIGEST_ELEMS]>
+        + Sync,
+    C: PseudoCompressionFunction<[PW::Value; DIGEST_ELEMS], 2>
+        + PseudoCompressionFunction<[PW; DIGEST_ELEMS], 2>
+        + Sync,
     R: Rng + Clone,
     PW::Value: Eq,
     [PW::Value; DIGEST_ELEMS]: Serialize + for<'de> Deserialize<'de>,
-    Standard: Distribution<P::Value>,
+    StandardUniform: Distribution<P::Value>,
 {
     type ProverData<M> =
         MerkleTree<P::Value, PW::Value, HorizontalPair<M, RowMajorMatrix<P::Value>>, DIGEST_ELEMS>;
@@ -96,11 +97,8 @@ where
         &self,
         index: usize,
         prover_data: &Self::ProverData<M>,
-    ) -> (
-        Vec<Vec<P::Value>>,
-        (Vec<Vec<P::Value>>, Vec<[PW::Value; DIGEST_ELEMS]>),
-    ) {
-        let (salted_openings, siblings) = self.inner.open_batch(index, prover_data);
+    ) -> BatchOpening<P::Value, Self> {
+        let (salted_openings, siblings) = self.inner.open_batch(index, prover_data).unpack();
         let (openings, salts): (Vec<_>, Vec<_>) = salted_openings
             .into_iter()
             .map(|row| {
@@ -108,14 +106,14 @@ where
                 (a.to_vec(), b.to_vec())
             })
             .unzip();
-        (openings, (salts, siblings))
+        BatchOpening::new(openings, (salts, siblings))
     }
 
     fn get_matrices<'a, M: Matrix<P::Value>>(
         &self,
         prover_data: &'a Self::ProverData<M>,
     ) -> Vec<&'a M> {
-        prover_data.leaves.iter().map(|mat| &mat.first).collect()
+        prover_data.leaves.iter().map(|mat| &mat.left).collect()
     }
 
     fn verify_batch(
@@ -123,19 +121,20 @@ where
         commit: &Self::Commitment,
         dimensions: &[Dimensions],
         index: usize,
-        opened_values: &[Vec<P::Value>],
-        proof: &Self::Proof,
+        batch_opening: BatchOpeningRef<P::Value, Self>,
     ) -> Result<(), Self::Error> {
-        let (salts, siblings) = proof;
+        let (opened_values, (salts, siblings)) = batch_opening.unpack();
 
-        let opened_salted_values = opened_values
-            .iter()
-            .zip(salts.iter())
+        let opened_salted_values = zip_eq(opened_values, salts, MerkleTreeError::WrongBatchSize)?
             .map(|(opened, salt)| opened.iter().chain(salt.iter()).copied().collect_vec())
             .collect_vec();
 
-        self.inner
-            .verify_batch(commit, dimensions, index, &opened_salted_values, siblings)
+        self.inner.verify_batch(
+            commit,
+            dimensions,
+            index,
+            BatchOpeningRef::new(&opened_salted_values, siblings),
+        )
     }
 }
 
@@ -146,11 +145,12 @@ mod tests {
     use itertools::Itertools;
     use p3_baby_bear::{BabyBear, Poseidon2BabyBear};
     use p3_commit::Mmcs;
-    use p3_field::{Field, FieldAlgebra};
-    use p3_matrix::dense::RowMajorMatrix;
+    use p3_field::{Field, PrimeCharacteristicRing};
     use p3_matrix::Matrix;
+    use p3_matrix::dense::RowMajorMatrix;
     use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
-    use rand::prelude::*;
+    use rand::SeedableRng;
+    use rand::rngs::SmallRng;
 
     use super::MerkleTreeHidingMmcs;
     use crate::MerkleTreeError;
@@ -166,7 +166,7 @@ mod tests {
         <F as Field>::Packing,
         MyHash,
         MyCompress,
-        ThreadRng,
+        SmallRng,
         8,
         SALT_ELEMS,
     >;
@@ -174,38 +174,34 @@ mod tests {
     #[test]
     #[should_panic]
     fn mismatched_heights() {
-        let mut rng = thread_rng();
+        let mut rng = SmallRng::seed_from_u64(1);
         let perm = Perm::new_from_rng_128(&mut rng);
         let hash = MyHash::new(perm.clone());
         let compress = MyCompress::new(perm);
-        let mmcs = MyMmcs::new(hash, compress, thread_rng());
+        let mmcs = MyMmcs::new(hash, compress, rng);
 
         // attempt to commit to a mat with 8 rows and a mat with 7 rows. this should panic.
-        let large_mat = RowMajorMatrix::new(
-            [1, 2, 3, 4, 5, 6, 7, 8].map(F::from_canonical_u8).to_vec(),
-            1,
-        );
-        let small_mat =
-            RowMajorMatrix::new([1, 2, 3, 4, 5, 6, 7].map(F::from_canonical_u8).to_vec(), 1);
+        let large_mat = RowMajorMatrix::new([1, 2, 3, 4, 5, 6, 7, 8].map(F::from_u8).to_vec(), 1);
+        let small_mat = RowMajorMatrix::new([1, 2, 3, 4, 5, 6, 7].map(F::from_u8).to_vec(), 1);
         let _ = mmcs.commit(vec![large_mat, small_mat]);
     }
 
     #[test]
     fn different_widths() -> Result<(), MerkleTreeError> {
-        let mut rng = thread_rng();
+        let mut rng = SmallRng::seed_from_u64(1);
+        // 10 mats with 32 rows where the ith mat has i + 1 cols
+        let mats = (0..10)
+            .map(|i| RowMajorMatrix::<F>::rand(&mut rng, 32, i + 1))
+            .collect_vec();
         let perm = Perm::new_from_rng_128(&mut rng);
         let hash = MyHash::new(perm.clone());
         let compress = MyCompress::new(perm);
-        let mmcs = MyMmcs::new(hash, compress, thread_rng());
+        let mmcs = MyMmcs::new(hash, compress, rng);
 
-        // 10 mats with 32 rows where the ith mat has i + 1 cols
-        let mats = (0..10)
-            .map(|i| RowMajorMatrix::<F>::rand(&mut thread_rng(), 32, i + 1))
-            .collect_vec();
         let dims = mats.iter().map(|m| m.dimensions()).collect_vec();
 
         let (commit, prover_data) = mmcs.commit(mats);
-        let (opened_values, proof) = mmcs.open_batch(17, &prover_data);
-        mmcs.verify_batch(&commit, &dims, 17, &opened_values, &proof)
+        let batch_proof = mmcs.open_batch(17, &prover_data);
+        mmcs.verify_batch(&commit, &dims, 17, (&batch_proof).into())
     }
 }

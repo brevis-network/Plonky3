@@ -1,8 +1,8 @@
 use core::marker::PhantomData;
 
+use p3_mds::MdsPermutation;
 use p3_mds::karatsuba_convolution::Convolve;
 use p3_mds::util::dot_product;
-use p3_mds::MdsPermutation;
 use p3_symmetric::Permutation;
 
 use crate::{BarrettParameters, MontyField31, MontyParameters};
@@ -73,7 +73,7 @@ impl<FP: MontyParameters> Convolve<MontyField31<FP>, i64, i64, i64> for SmallCon
 /// x' = x mod 2^10
 /// See Thm 1 (Below function) for a proof that this function is correct.
 #[inline(always)]
-fn barrett_red_monty31<BP: BarrettParameters>(input: i128) -> i64 {
+const fn barrett_red_monty31<BP: BarrettParameters>(input: i128) -> i64 {
     // input = input_low + beta*input_high
     // So input_high < 2**63 and fits in an i64.
     let input_high = (input >> BP::N) as i64; // input_high < input / beta < 2**{80 - N}
@@ -243,7 +243,7 @@ where
         // Thus the values appearing at the end are bounded by 3^n 2^50
         // where n is the maximal number of negacyclic_conv
         // recombination steps. When N = 64, we need to recombine for
-        // singed_conv_32, singed_conv_16, singed_conv_8 so the
+        // signed_conv_32, signed_conv_16, signed_conv_8 so the
         // overall bound will be 3^3 2^50 < 32 * 2^50 < 2^55.
         debug_assert!(z > -(1i64 << 55));
         debug_assert!(z < (1i64 << 55));

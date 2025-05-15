@@ -1,13 +1,18 @@
 use core::borrow::{Borrow, BorrowMut};
 
 use p3_air::{Air, AirBuilder, BaseAir};
-use p3_field::Field;
+use p3_field::{Field, PrimeField};
 use p3_matrix::Matrix;
+use p3_matrix::dense::RowMajorMatrix;
 use p3_poseidon2::GenericPoseidon2LinearLayers;
+use rand::distr::StandardUniform;
+use rand::prelude::Distribution;
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 
 use crate::air::eval;
 use crate::constants::RoundConstants;
-use crate::{Poseidon2Air, Poseidon2Cols};
+use crate::{Poseidon2Air, Poseidon2Cols, generate_vectorized_trace_rows};
 
 /// A "vectorized" version of Poseidon2Cols, for computing multiple Poseidon2 permutations per row.
 #[repr(C)]
@@ -26,14 +31,14 @@ pub struct VectorizedPoseidon2Cols<
 }
 
 impl<
-        T,
-        const WIDTH: usize,
-        const SBOX_DEGREE: u64,
-        const SBOX_REGISTERS: usize,
-        const HALF_FULL_ROUNDS: usize,
-        const PARTIAL_ROUNDS: usize,
-        const VECTOR_LEN: usize,
-    >
+    T,
+    const WIDTH: usize,
+    const SBOX_DEGREE: u64,
+    const SBOX_REGISTERS: usize,
+    const HALF_FULL_ROUNDS: usize,
+    const PARTIAL_ROUNDS: usize,
+    const VECTOR_LEN: usize,
+>
     Borrow<
         VectorizedPoseidon2Cols<
             T,
@@ -77,14 +82,14 @@ impl<
 }
 
 impl<
-        T,
-        const WIDTH: usize,
-        const SBOX_DEGREE: u64,
-        const SBOX_REGISTERS: usize,
-        const HALF_FULL_ROUNDS: usize,
-        const PARTIAL_ROUNDS: usize,
-        const VECTOR_LEN: usize,
-    >
+    T,
+    const WIDTH: usize,
+    const SBOX_DEGREE: u64,
+    const SBOX_REGISTERS: usize,
+    const HALF_FULL_ROUNDS: usize,
+    const PARTIAL_ROUNDS: usize,
+    const VECTOR_LEN: usize,
+>
     BorrowMut<
         VectorizedPoseidon2Cols<
             T,
@@ -138,7 +143,7 @@ pub struct VectorizedPoseidon2Air<
     const PARTIAL_ROUNDS: usize,
     const VECTOR_LEN: usize,
 > {
-    air: Poseidon2Air<
+    pub(crate) air: Poseidon2Air<
         F,
         LinearLayers,
         WIDTH,
@@ -150,15 +155,15 @@ pub struct VectorizedPoseidon2Air<
 }
 
 impl<
-        F: Field,
-        LinearLayers,
-        const WIDTH: usize,
-        const SBOX_DEGREE: u64,
-        const SBOX_REGISTERS: usize,
-        const HALF_FULL_ROUNDS: usize,
-        const PARTIAL_ROUNDS: usize,
-        const VECTOR_LEN: usize,
-    >
+    F: Field,
+    LinearLayers,
+    const WIDTH: usize,
+    const SBOX_DEGREE: u64,
+    const SBOX_REGISTERS: usize,
+    const HALF_FULL_ROUNDS: usize,
+    const PARTIAL_ROUNDS: usize,
+    const VECTOR_LEN: usize,
+>
     VectorizedPoseidon2Air<
         F,
         LinearLayers,
@@ -170,23 +175,49 @@ impl<
         VECTOR_LEN,
     >
 {
-    pub fn new(constants: RoundConstants<F, WIDTH, HALF_FULL_ROUNDS, PARTIAL_ROUNDS>) -> Self {
+    pub const fn new(
+        constants: RoundConstants<F, WIDTH, HALF_FULL_ROUNDS, PARTIAL_ROUNDS>,
+    ) -> Self {
         Self {
             air: Poseidon2Air::new(constants),
         }
     }
+
+    pub fn generate_vectorized_trace_rows(
+        &self,
+        num_hashes: usize,
+        extra_capacity_bits: usize,
+    ) -> RowMajorMatrix<F>
+    where
+        F: PrimeField,
+        LinearLayers: GenericPoseidon2LinearLayers<F, WIDTH>,
+        StandardUniform: Distribution<[F; WIDTH]>,
+    {
+        let mut rng = SmallRng::seed_from_u64(1);
+        let inputs = (0..num_hashes).map(|_| rng.random()).collect();
+        generate_vectorized_trace_rows::<
+            _,
+            LinearLayers,
+            WIDTH,
+            SBOX_DEGREE,
+            SBOX_REGISTERS,
+            HALF_FULL_ROUNDS,
+            PARTIAL_ROUNDS,
+            VECTOR_LEN,
+        >(inputs, &self.air.constants, extra_capacity_bits)
+    }
 }
 
 impl<
-        F: Field,
-        LinearLayers: Sync,
-        const WIDTH: usize,
-        const SBOX_DEGREE: u64,
-        const SBOX_REGISTERS: usize,
-        const HALF_FULL_ROUNDS: usize,
-        const PARTIAL_ROUNDS: usize,
-        const VECTOR_LEN: usize,
-    > BaseAir<F>
+    F: Field,
+    LinearLayers: Sync,
+    const WIDTH: usize,
+    const SBOX_DEGREE: u64,
+    const SBOX_REGISTERS: usize,
+    const HALF_FULL_ROUNDS: usize,
+    const PARTIAL_ROUNDS: usize,
+    const VECTOR_LEN: usize,
+> BaseAir<F>
     for VectorizedPoseidon2Air<
         F,
         LinearLayers,
@@ -204,15 +235,15 @@ impl<
 }
 
 impl<
-        AB: AirBuilder,
-        LinearLayers: GenericPoseidon2LinearLayers<AB::Expr, WIDTH>,
-        const WIDTH: usize,
-        const SBOX_DEGREE: u64,
-        const SBOX_REGISTERS: usize,
-        const HALF_FULL_ROUNDS: usize,
-        const PARTIAL_ROUNDS: usize,
-        const VECTOR_LEN: usize,
-    > Air<AB>
+    AB: AirBuilder,
+    LinearLayers: GenericPoseidon2LinearLayers<AB::Expr, WIDTH>,
+    const WIDTH: usize,
+    const SBOX_DEGREE: u64,
+    const SBOX_REGISTERS: usize,
+    const HALF_FULL_ROUNDS: usize,
+    const PARTIAL_ROUNDS: usize,
+    const VECTOR_LEN: usize,
+> Air<AB>
     for VectorizedPoseidon2Air<
         AB::F,
         LinearLayers,
@@ -227,9 +258,9 @@ impl<
     #[inline]
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();
-        let local = main.row_slice(0);
+        let local = main.row_slice(0).expect("The matrix is empty?");
         let local: &VectorizedPoseidon2Cols<
-            AB::Var,
+            _,
             WIDTH,
             SBOX_DEGREE,
             SBOX_REGISTERS,

@@ -2,7 +2,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::iter;
 
-use itertools::{izip, Itertools};
+use itertools::{Itertools, izip};
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
 use p3_commit::Mmcs;
 use p3_field::{ExtensionField, Field};
@@ -26,13 +26,15 @@ where
     Challenge: ExtensionField<Val>,
     M: Mmcs<Challenge>,
     Challenger: FieldChallenger<Val> + GrindingChallenger + CanObserve<M::Commitment>,
-    G: FriGenericConfig<Challenge>,
+    G: FriGenericConfig<Val, Challenge>,
 {
     // check sorted descending
-    assert!(inputs
-        .iter()
-        .tuple_windows()
-        .all(|(l, r)| l.len() >= r.len()));
+    assert!(
+        inputs
+            .iter()
+            .tuple_windows()
+            .all(|(l, r)| l.len() >= r.len())
+    );
 
     let log_max_height = log2_strict_usize(inputs[0].len());
 
@@ -80,7 +82,7 @@ where
     Challenge: ExtensionField<Val>,
     M: Mmcs<Challenge>,
     Challenger: FieldChallenger<Val> + CanObserve<M::Commitment>,
-    G: FriGenericConfig<Challenge>,
+    G: FriGenericConfig<Val, Challenge>,
 {
     let mut inputs_iter = inputs.into_iter().peekable();
     let mut folded = inputs_iter.next().unwrap();
@@ -92,7 +94,7 @@ where
         let (commit, prover_data) = config.mmcs.commit_matrix(leaves);
         challenger.observe(commit.clone());
 
-        let beta: Challenge = challenger.sample_ext_element();
+        let beta: Challenge = challenger.sample_algebra_element();
         // We passed ownership of `current` to the MMCS, so get a reference to it
         let leaves = config.mmcs.get_matrices(&prover_data).pop().unwrap();
         folded = g.fold_matrix(beta, leaves.as_view());
@@ -111,7 +113,7 @@ where
     for x in folded {
         assert_eq!(x, final_poly);
     }
-    challenger.observe_ext_element(final_poly);
+    challenger.observe_algebra_element(final_poly);
 
     CommitPhaseResult {
         commits,
@@ -137,7 +139,8 @@ where
             let index_i_sibling = index_i ^ 1;
             let index_pair = index_i >> 1;
 
-            let (mut opened_rows, opening_proof) = config.mmcs.open_batch(index_pair, commit);
+            let (mut opened_rows, opening_proof) =
+                config.mmcs.open_batch(index_pair, commit).unpack();
             assert_eq!(opened_rows.len(), 1);
             let opened_row = opened_rows.pop().unwrap();
             assert_eq!(opened_row.len(), 2, "Committed data should be in pairs");
