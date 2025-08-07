@@ -65,7 +65,7 @@ pub struct TwoAdicMultiplicativeCoset<Val: TwoAdicField> {
 }
 
 impl<Val: TwoAdicField> TwoAdicMultiplicativeCoset<Val> {
-    fn gen(&self) -> Val {
+    pub fn gen(&self) -> Val {
         Val::two_adic_generator(self.log_n)
     }
 }
