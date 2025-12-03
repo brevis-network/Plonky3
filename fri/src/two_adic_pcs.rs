@@ -666,7 +666,7 @@ pub fn debug_print_fri_structure<Challenge, FriMmcs, Val, InputMmcs>(
     );
 
     println!();
-    println!("Mental picture:");
+    println!("Mental picture for pcs.open:");
     println!(
         "  Layer 1 (public openings / AIR view):\n\
      \
