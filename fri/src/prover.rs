@@ -87,6 +87,12 @@ where
     let mut data = vec![];
 
     while folded.len() > config.blowup() {
+        println!(
+            "[FRI commit_phase] layer {}: len = {}",
+            commits.len(),
+            folded.len()
+        );
+
         let leaves = RowMajorMatrix::new(folded, 2);
         let (commit, prover_data) = config.mmcs.commit_matrix(leaves);
         challenger.observe(commit.clone());
@@ -103,6 +109,12 @@ where
             izip!(&mut folded, v).for_each(|(c, x)| *c += x);
         }
     }
+    println!(
+        "[FRI commit_phase] final layer (constant poly) len = {}, blowup = {}",
+        folded.len(),
+        config.blowup()
+    );
+
 
     // We should be left with `blowup` evaluations of a constant polynomial.
     assert_eq!(folded.len(), config.blowup());

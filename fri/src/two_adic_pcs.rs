@@ -341,6 +341,8 @@ where
                 .collect()
         });
 
+        debug_print_fri_structure::<Challenge, FriMmcs, Val, InputMmcs>(&fri_proof);
+
         (all_opened_values, fri_proof)
     }
 
@@ -492,4 +494,51 @@ fn compute_inverse_denominators<F: TwoAdicField, EF: ExtensionField<F>, M: Matri
             )
         })
         .collect()
+}
+
+fn debug_print_fri_structure<Challenge, FriMmcs, Val, InputMmcs>(
+    proof: &FriProof<Challenge, FriMmcs, Val, Vec<BatchOpening<Val, InputMmcs>>>,
+) where
+    Challenge: Field,
+    FriMmcs: Mmcs<Challenge>,
+    Val: Field,
+    InputMmcs: Mmcs<Val>,
+{
+    println!("====== FRI proof structure ======");
+    println!(
+        "num commit_phase_commits (FRI layers) = {}",
+        proof.commit_phase_commits.len()
+    );
+    println!(
+        "num query_proofs (FRI queries) = {}",
+        proof.query_proofs.len()
+    );
+
+    for (qi, q) in proof.query_proofs.iter().enumerate() {
+        // input_proof: Vec<BatchOpening<Val, InputMmcs>>
+        let num_rounds = q.input_proof.len();
+        let num_fri_layers = q.commit_phase_openings.len();
+
+        println!("  Query #{qi}:");
+        println!("    input_proof (PCS rounds) = {}", num_rounds);
+        println!(
+            "    commit_phase_openings (FRI layers)   = {}",
+            num_fri_layers
+        );
+
+        for (ri, batch_opening) in q.input_proof.iter().enumerate() {
+            let num_mats = batch_opening.opened_values.len();
+            println!("      Round #{}:", ri);
+            println!("        matrices opened = {}", num_mats);
+
+            for (m_idx, row) in batch_opening.opened_values.iter().enumerate() {
+                println!(
+                    "          matrix #{}: row_len = {} (≈ polys)",
+                    m_idx,
+                    row.len(),
+                );
+            }
+        }
+    }
+    println!("====== end of FRI proof structure ======\n");
 }
