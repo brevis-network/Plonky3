@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 pub struct FriProof<F: Field, M: Mmcs<F>, Witness, InputProof> {
     /// soundcalc: One commitment per FRI commit-phase layer.
     /// soundcalc: Each element is the Merkle/PCS commitment of the extension-field codeword at that layer.
+    /// soundcalc: Layer 0 commits to the extension-field codeword of the reduced polynomial r(X)
+    /// soundcalc: in each layer we fold the previous codeword and add any r_log_height(X) codewords that align in length.
     pub commit_phase_commits: Vec<M::Commitment>,
     /// soundcalc: One entry per FRI query.
     /// soundcalc: Each `QueryProof` bundles:
