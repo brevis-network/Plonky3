@@ -3,7 +3,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::marker::PhantomData;
-
+use std::any::type_name;
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, FieldChallenger, GrindingChallenger};
 use p3_commit::{Mmcs, OpenedValues, Pcs, PolynomialSpace, TwoAdicMultiplicativeCoset};
@@ -320,6 +320,8 @@ where
             }
         }
 
+        debug_print_reduced_openings(&reduced_openings);
+
         let fri_input = reduced_openings.into_iter().rev().flatten().collect_vec();
 
         let g: TwoAdicFriGenericConfigForMmcs<Val, InputMmcs> =
@@ -496,7 +498,75 @@ fn compute_inverse_denominators<F: TwoAdicField, EF: ExtensionField<F>, M: Matri
         .collect()
 }
 
-fn debug_print_fri_structure<Challenge, FriMmcs, Val, InputMmcs>(
+
+fn debug_print_reduced_openings<Challenge: Field>(
+    reduced_openings: &[Option<Vec<Challenge>>],
+) {
+    println!("====== FRI PCS: reduced_openings snapshot ======");
+    println!(
+        "Each non-empty entry reduced_openings[log_h] is ONE extension-field codeword \
+         that will be fed into FRI.\n\
+         - index = X in the enlarged two-adic evaluation domain\n\
+         - value = r_log_h(X) = combined quotient for all polys & all opening points at that X\n",
+    );
+
+    for (log_h, maybe_codeword) in reduced_openings.iter().enumerate() {
+        if let Some(codeword) = maybe_codeword {
+            println!(
+                "  log_height = {log_h:2} -> Some(vec_len = {}), domain size ~= 2^{log_h}",
+                codeword.len(),
+            );
+        }
+    }
+
+    println!("Note: fri_input is built by taking all these non-empty codewords,");
+    println!("      sorted by descending log_height, and passing them to `fri::prove`.");
+    println!("====== end of reduced_openings snapshot ======\n");
+}
+
+
+
+/// Debug helper to introspect the *shape* of a FRI proof produced by `TwoAdicFriPcs`.
+///
+/// Mental model (three logical layers that sit on top of each other):
+///
+/// 1. **Layer 1 – Public openings p(z)**:
+///    - For each trace matrix and each extension point z, we interpolate on the
+///      base-field LDE matrix to recover all values `p_i(z)`.
+///    - These values live in `all_opened_values: OpenedValues<Challenge>` and are
+///      exposed to the AIR / constraint system to check that all constraints hold.
+///    - This layer is not part of `FriProof` itself; it is the "public evaluation"
+///      layer.
+///
+/// 2. **Layer 2 – Batched quotient r_z(X)**:
+///    - Using a random extension challenge α, we batch *all* polynomials and
+///      *all* opening points into one (or several) batched quotients
+///         r_z(X) = Σ_i α^i * (p_i(X) - p_i(z)) / (X - z).
+///    - These quotients are evaluated on a two-adic domain to produce an
+///      extension-field codeword. This codeword becomes `fri_input` – the input
+///      to the FRI protocol.
+///
+/// 3. **Layer 3 – FRI proof that r_z(X) is low-degree and consistent with LDE**:
+///    - FRI commits to the codewords and their folded descendants using an
+///      *extension-field* MMCS `FriMmcs`.
+///    - For each random query index, FRI:
+///        * opens the batched codeword and its folds (using `FriMmcs::Proof`)
+///          to prove low-degree, and
+///        * uses PCS-side openings (using `InputMmcs::Proof`) to tie the
+///          codeword values back to the original base-field LDE trace.
+///
+/// This function only sees the *FRI-level* object:
+///   `FriProof<Challenge, FriMmcs, Val, Vec<BatchOpening<Val, InputMmcs>>>`.
+/// From it we can read:
+///   - how many FRI layers there are,
+///   - how many queries, and
+///   - for each query, how many PCS (base-field) openings vs FRI (extension-field)
+///     openings are involved.
+///
+/// In short, this is a structural debugger for:
+///   - **PCS/base side**: `input_proof: Vec<BatchOpening<Val, InputMmcs>>`
+///   - **FRI/ext side**:  `commit_phase_openings: Vec<CommitPhaseProofStep<Challenge, FriMmcs>>`
+pub fn debug_print_fri_structure<Challenge, FriMmcs, Val, InputMmcs>(
     proof: &FriProof<Challenge, FriMmcs, Val, Vec<BatchOpening<Val, InputMmcs>>>,
 ) where
     Challenge: Field,
@@ -505,40 +575,92 @@ fn debug_print_fri_structure<Challenge, FriMmcs, Val, InputMmcs>(
     InputMmcs: Mmcs<Val>,
 {
     println!("====== FRI proof structure ======");
+
+    // ---- Type-level information: which MMCS is used where? ----
+    println!("Base-field MMCS (LDE trace / PCS side):");
+    println!("  InputMmcs type        = {}", type_name::<InputMmcs>());
+    println!("  InputMmcs::Commitment = {}", type_name::<InputMmcs::Commitment>());
+    println!("  InputMmcs::Proof      = {}", type_name::<InputMmcs::Proof>());
+
+    println!("Extension-field MMCS (FRI codewords):");
+    println!("  FriMmcs type          = {}", type_name::<FriMmcs>());
+    println!("  FriMmcs::Commitment   = {}", type_name::<FriMmcs::Commitment>());
+    println!("  FriMmcs::Proof        = {}", type_name::<FriMmcs::Proof>());
+
+    // ---- High-level FRI statistics ----
     println!(
         "num commit_phase_commits (FRI layers) = {}",
         proof.commit_phase_commits.len()
     );
     println!(
-        "num query_proofs (FRI queries) = {}",
+        "num query_proofs (FRI queries)        = {}",
         proof.query_proofs.len()
     );
 
+    let mut total_pcs_merkle_paths = 0usize;
+    let mut total_fri_merkle_paths = 0usize;
+
     for (qi, q) in proof.query_proofs.iter().enumerate() {
-        // input_proof: Vec<BatchOpening<Val, InputMmcs>>
         let num_rounds = q.input_proof.len();
         let num_fri_layers = q.commit_phase_openings.len();
 
+        total_pcs_merkle_paths += num_rounds;
+        total_fri_merkle_paths += num_fri_layers;
+
         println!("  Query #{qi}:");
-        println!("    input_proof (PCS rounds) = {}", num_rounds);
+
+        // -------- PCS / base-field side (ties r_z(X) back to LDE trace) --------
+        println!("    [PCS/base] input_proof (rounds)    = {}", num_rounds);
         println!(
-            "    commit_phase_openings (FRI layers)   = {}",
-            num_fri_layers
+            "      Each BatchOpening uses InputMmcs::Proof to bind r_z(X) rows back to the original LDE trace commitments."
         );
 
         for (ri, batch_opening) in q.input_proof.iter().enumerate() {
             let num_mats = batch_opening.opened_values.len();
-            println!("      Round #{}:", ri);
-            println!("        matrices opened = {}", num_mats);
+            println!("      Round #{ri}:");
+            println!("        matrices opened (batches)      = {}", num_mats);
 
             for (m_idx, row) in batch_opening.opened_values.iter().enumerate() {
                 println!(
-                    "          matrix #{}: row_len = {} (≈ polys)",
-                    m_idx,
+                    "          matrix #{m_idx}: row_len = {} (≈ number of polynomials opened at this point, base field Val)",
                     row.len(),
                 );
             }
         }
+
+        // -------- FRI / extension-field side (proves low degree of r_z(X)) --------
+        println!(
+            "    [FRI/ext] commit_phase_openings    = {} (FRI layers touched by this query)",
+            num_fri_layers
+        );
+        println!(
+            "      Each CommitPhaseProofStep uses FriMmcs::Proof to show the queried codeword values come from the committed FRI layers."
+        );
+
+        for (li, _step) in q.commit_phase_openings.iter().enumerate() {
+            println!(
+                "      FRI layer #{li}: 1x FriMmcs::Proof (extension-field Merkle path for the folded codeword)"
+            );
+        }
     }
+
+    println!();
+    println!("Summary over all queries:");
+    println!(
+        "  total PCS/base Merkle paths (BatchOpening)  = {}",
+        total_pcs_merkle_paths
+    );
+    println!(
+        "  total FRI/ext Merkle paths (CommitPhase)    = {}",
+        total_fri_merkle_paths
+    );
+
+    println!();
+    println!("Mental picture:");
+    println!("  Layer 1 (public openings): all_opened_values[round][matrix][point][poly] = p_i(z) in the extension field.");
+    println!("  Layer 2 (batched quotient): a random α folds all (p_i, z) into batched r_z(X), whose codeword becomes fri_input.");
+    println!("  Layer 3 (this FriProof):");
+    println!("    - input_proof  (PCS/base) shows r_z(X) really comes from the committed base-field LDE trace.");
+    println!("    - commit_phase_openings (FRI/ext) shows r_z(X) is low-degree via FRI on its codewords.");
     println!("====== end of FRI proof structure ======\n");
 }
