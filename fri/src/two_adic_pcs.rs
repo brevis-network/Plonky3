@@ -321,6 +321,7 @@ where
         }
 
         debug_print_reduced_openings(&reduced_openings);
+        debug_print_batch_sizes(&num_reduced, &reduced_openings);
 
         let fri_input = reduced_openings.into_iter().rev().flatten().collect_vec();
 
@@ -510,15 +511,26 @@ fn debug_print_reduced_openings<Challenge: Field>(
          - value = r_log_h(X) = combined quotient for all polys & all opening points at that X\n",
     );
 
+    let mut num_buckets = 0usize;
     for (log_h, maybe_codeword) in reduced_openings.iter().enumerate() {
         if let Some(codeword) = maybe_codeword {
+            num_buckets += 1;
+            let len = codeword.len();
+
             println!(
-                "  log_height = {log_h:2} -> Some(vec_len = {}), domain size ~= 2^{log_h}",
-                codeword.len(),
+                "  bucket[log_h = {log_h:2}] -> FRI codeword r_{log_h}(X) \
+                 with {len} samples (domain size ≈ 2^{log_h})"
+            );
+            println!(
+                "    semantics: r_{log_h}(X) = Σ_{{(mat, z, i) in bucket(log_h)}} \
+                 α^{{global_index(mat,z,i)}} * (p_i(X) - p_i(z)) / (X - z)"
             );
         }
     }
 
+    println!(
+        "Bucket summary: non-empty reduced_openings entries (FRI codewords) = {num_buckets}"
+    );
     println!("Note: fri_input is built by taking all these non-empty codewords,");
     println!("      sorted by descending log_height, and passing them to `fri::prove`.");
     println!("====== end of reduced_openings snapshot ======\n");
@@ -657,10 +669,44 @@ pub fn debug_print_fri_structure<Challenge, FriMmcs, Val, InputMmcs>(
 
     println!();
     println!("Mental picture:");
-    println!("  Layer 1 (public openings): all_opened_values[round][matrix][point][poly] = p_i(z) in the extension field.");
+    println!(
+        "  Layer 1 (public openings / AIR view):\n\
+     \
+     - all_opened_values[round][matrix][point][poly] = p_i(z)\n\
+     - these values are obtained by interpolating the base-field LDE in the extension field, and\n\
+     - they are passed up to the AIR / STARK verifier to check the algebraic constraints at z."
+    );
+
     println!("  Layer 2 (batched quotient): a random α folds all (p_i, z) into batched r_z(X), whose codeword becomes fri_input.");
     println!("  Layer 3 (this FriProof):");
     println!("    - input_proof  (PCS/base) shows r_z(X) really comes from the committed base-field LDE trace.");
     println!("    - commit_phase_openings (FRI/ext) shows r_z(X) is low-degree via FRI on its codewords.");
     println!("====== end of FRI proof structure ======\n");
+}
+
+fn debug_print_batch_sizes<Challenge: Field>(num_reduced: &[usize], reduced_openings: &[Option<Vec<Challenge>>]) {
+    println!("====== FRI PCS: batching sizes (Section 3.3 L) ======");
+    println!(
+        "For each log_height, num_reduced[log_height] tracks the total number L of \
+     quotient polynomials that have been folded into that bucket.\n\
+     It is exactly the exponent offset L used when computing alpha_pow_offset = alpha^L \
+     for reduced_openings[log_height]."
+    );
+
+    for (log_h, &count) in num_reduced.iter().enumerate() {
+        if count == 0 {
+            continue;
+        }
+
+        let len = reduced_openings[log_h]
+            .as_ref()
+            .map(|v| v.len())
+            .unwrap_or(0);
+
+        println!(
+            "  log_height = {log_h:2}:  L = {count:6}  (domain size ≈ {len} points)"
+        );
+    }
+
+    println!("====== end of batching sizes ======\n");
 }
