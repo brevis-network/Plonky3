@@ -649,11 +649,9 @@ pub fn debug_print_fri_structure<Challenge, FriMmcs, Val, InputMmcs>(
             "      Each CommitPhaseProofStep uses FriMmcs::Proof to show the queried codeword values come from the committed FRI layers."
         );
 
-        for (li, _step) in q.commit_phase_openings.iter().enumerate() {
-            println!(
-                "      FRI layer #{li}: 1x FriMmcs::Proof (extension-field Merkle path for the folded codeword)"
-            );
-        }
+        println!(
+            "      FRI layer #i: 1x FriMmcs::Proof (extension-field Merkle path for the folded codeword)"
+        );
     }
 
     println!();
