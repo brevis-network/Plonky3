@@ -675,10 +675,28 @@ pub fn debug_print_fri_structure<Challenge, FriMmcs, Val, InputMmcs>(
      - they are passed up to the AIR / STARK verifier to check the algebraic constraints at z."
     );
 
-    println!("  Layer 2 (batched quotient): a random α folds all (p_i, z) into batched r_z(X), whose codeword becomes fri_input.");
+    println!("  Layer 2 (batched quotient / bucketed codewords):\n\
+     \
+     - for each log_height, all (round, matrix, point, poly) with that row height are folded\n\
+       (using successive powers of α) into a single extension-field codeword r_log_h(X);\n\
+     - r_log_h(X) is the randomized, reduced quotient polynomial, and\n\
+     - fri_input is the concatenation of all non-empty r_log_h(X) codewords, ordered by \
+       descending log_height.");
+
     println!("  Layer 3 (this FriProof):");
-    println!("    - input_proof  (PCS/base) shows r_z(X) really comes from the committed base-field LDE trace.");
-    println!("    - commit_phase_openings (FRI/ext) shows r_z(X) is low-degree via FRI on its codewords.");
+    println!(
+        "    - input_proof  (PCS/base) ties each queried r_log_h(X_query) value\n\
+     \
+     back to the underlying base-field LDE rows that were Merkle-committed."
+    );
+    println!(
+        "    - commit_phase_openings (FRI/ext) run a low-degree test on those\n\
+     \
+     r_log_h codewords, showing that the batched quotient is (with high\n\
+     \
+     probability) a low-degree polynomial."
+    );
+
     println!("====== end of FRI proof structure ======\n");
 }
 
