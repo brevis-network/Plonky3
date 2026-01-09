@@ -146,7 +146,7 @@ pub fn mds_light_permutation<
             state
                 .iter_mut()
                 .enumerate()
-                .for_each(|(i, elem)| *elem += sums[i % 4].clone());
+                .for_each(|(i, elem)| *elem = elem.clone() + sums[i % 4].clone());
         }
 
         _ => {
