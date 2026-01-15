@@ -57,8 +57,12 @@ pub trait FieldChallenger<F: Field>:
     }
 
     fn sample_ext_element<EF: FieldExtensionAlgebra<F>>(&mut self) -> EF {
-        let vec = self.sample_vec(EF::D);
-        EF::from_base_slice(&vec)
+        use rand::{thread_rng, Rng};
+
+        let mut rng = thread_rng();
+        EF::from_canonical_u32(rng.gen())
+        // let vec = self.sample_vec(EF::D);
+        // EF::from_base_slice(&vec)
     }
 }
 
