@@ -61,7 +61,7 @@ pub trait FieldChallenger<F: Field>:
 
         // let mut rng = thread_rng();
         // EF::from_canonical_u32(rng.gen())
-        let vec = self.sample_vec(1);
+        let vec = self.sample_vec(EF::D);
         EF::from_base_slice(&vec)
     }
 }

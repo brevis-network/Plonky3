@@ -35,7 +35,10 @@ where
         }
     }
 
-    fn duplexing(&mut self) {
+    fn duplexing(&mut self)
+    where
+        F: Default,
+    {
         assert!(self.input_buffer.len() <= RATE);
 
         // Overwrite the first r elements with the inputs.
@@ -47,7 +50,8 @@ where
         self.permutation.permute_mut(&mut self.sponge_state);
 
         self.output_buffer.clear();
-        self.output_buffer.extend(&self.sponge_state[..RATE]);
+        // self.output_buffer.extend(&self.sponge_state[..RATE]);
+        self.output_buffer.extend(vec![F::default(); RATE]);
     }
 }
 
@@ -62,7 +66,7 @@ where
 impl<F, P, const WIDTH: usize, const RATE: usize> CanObserve<F>
     for DuplexChallenger<F, P, WIDTH, RATE>
 where
-    F: Copy,
+    F: Copy + Default,
     P: CryptographicPermutation<[F; WIDTH]>,
 {
     fn observe(&mut self, value: F) {
@@ -80,7 +84,7 @@ where
 impl<F, P, const N: usize, const WIDTH: usize, const RATE: usize> CanObserve<[F; N]>
     for DuplexChallenger<F, P, WIDTH, RATE>
 where
-    F: Copy,
+    F: Copy + Default,
     P: CryptographicPermutation<[F; WIDTH]>,
 {
     fn observe(&mut self, values: [F; N]) {
@@ -93,7 +97,7 @@ where
 impl<F, P, const N: usize, const WIDTH: usize, const RATE: usize> CanObserve<Hash<F, F, N>>
     for DuplexChallenger<F, P, WIDTH, RATE>
 where
-    F: Copy,
+    F: Copy + Default,
     P: CryptographicPermutation<[F; WIDTH]>,
 {
     fn observe(&mut self, values: Hash<F, F, N>) {
@@ -107,7 +111,7 @@ where
 impl<F, P, const WIDTH: usize, const RATE: usize> CanObserve<Vec<Vec<F>>>
     for DuplexChallenger<F, P, WIDTH, RATE>
 where
-    F: Copy,
+    F: Copy + Default,
     P: CryptographicPermutation<[F; WIDTH]>,
 {
     fn observe(&mut self, valuess: Vec<Vec<F>>) {
