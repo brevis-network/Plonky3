@@ -150,32 +150,6 @@ impl FieldAlgebra for Goldilocks {
 
 impl Field for Goldilocks {
     // TODO: Add cfg-guarded Packing for NEON
-
-    #[cfg(all(
-        target_arch = "x86_64",
-        target_feature = "avx2",
-        not(all(feature = "nightly-features", target_feature = "avx512f"))
-    ))]
-    type Packing = crate::PackedGoldilocksAVX2;
-
-    #[cfg(all(
-        feature = "nightly-features",
-        target_arch = "x86_64",
-        target_feature = "avx512f"
-    ))]
-    type Packing = crate::PackedGoldilocksAVX512;
-    #[cfg(not(any(
-        all(
-            target_arch = "x86_64",
-            target_feature = "avx2",
-            not(all(feature = "nightly-features", target_feature = "avx512f"))
-        ),
-        all(
-            feature = "nightly-features",
-            target_arch = "x86_64",
-            target_feature = "avx512f"
-        ),
-    )))]
     type Packing = Self;
 
     // Sage: GF(2^64 - 2^32 + 1).multiplicative_generator()

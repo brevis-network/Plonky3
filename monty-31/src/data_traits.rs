@@ -26,33 +26,7 @@ pub trait MontyParameters:
 /// PackedMontyParameters contains constants needed for MONTY operations for packings of Monty31 fields.
 #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
 pub trait PackedMontyParameters: crate::MontyParametersNeon + MontyParameters {}
-#[cfg(all(
-    target_arch = "x86_64",
-    target_feature = "avx2",
-    not(all(feature = "nightly-features", target_feature = "avx512f"))
-))]
-/// PackedMontyParameters contains constants needed for MONTY operations for packings of Monty31 fields.
-pub trait PackedMontyParameters: crate::MontyParametersAVX2 + MontyParameters {}
-#[cfg(all(
-    feature = "nightly-features",
-    target_arch = "x86_64",
-    target_feature = "avx512f"
-))]
-/// PackedMontyParameters contains constants needed for MONTY operations for packings of Monty31 fields.
-pub trait PackedMontyParameters: crate::MontyParametersAVX512 + MontyParameters {}
-#[cfg(not(any(
-    all(target_arch = "aarch64", target_feature = "neon"),
-    all(
-        target_arch = "x86_64",
-        target_feature = "avx2",
-        not(all(feature = "nightly-features", target_feature = "avx512f"))
-    ),
-    all(
-        feature = "nightly-features",
-        target_arch = "x86_64",
-        target_feature = "avx512f"
-    ),
-)))]
+#[cfg(not(all(target_arch = "aarch64", target_feature = "neon")))]
 /// PackedMontyParameters contains constants needed for MONTY operations for packings of Monty31 fields.
 pub trait PackedMontyParameters: MontyParameters {}
 

@@ -1,47 +1,13 @@
 //! The Keccak-f permutation, and hash functions built from it.
 
 #![no_std]
-#![cfg_attr(
-    all(
-        feature = "nightly-features",
-        target_arch = "x86_64",
-        target_feature = "avx512f"
-    ),
-    feature(stdarch_x86_avx512)
-)]
 
 use p3_symmetric::{CryptographicHasher, CryptographicPermutation, Permutation};
 use tiny_keccak::{keccakf, Hasher, Keccak};
 
-#[cfg(all(
-    feature = "nightly-features",
-    target_arch = "x86_64",
-    target_feature = "avx512f"
-))]
-pub mod avx512;
-#[cfg(all(
-    feature = "nightly-features",
-    target_arch = "x86_64",
-    target_feature = "avx512f"
-))]
-pub use avx512::*;
-
-#[cfg(all(
-    target_arch = "x86_64",
-    target_feature = "avx2",
-    not(all(feature = "nightly-features", target_feature = "avx512f"))
-))]
-pub mod avx2;
-#[cfg(all(
-    target_arch = "x86_64",
-    target_feature = "avx2",
-    not(all(feature = "nightly-features", target_feature = "avx512f"))
-))]
-pub use avx2::*;
-
-#[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))]
+#[cfg(target_arch = "x86_64")]
 pub mod sse2;
-#[cfg(all(target_arch = "x86_64", not(target_feature = "avx2")))]
+#[cfg(target_arch = "x86_64")]
 pub use sse2::*;
 
 #[cfg(all(
