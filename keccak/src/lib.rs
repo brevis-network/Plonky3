@@ -16,25 +16,29 @@ use tiny_keccak::{keccakf, Hasher, Keccak};
 #[cfg(all(
     feature = "nightly-features",
     target_arch = "x86_64",
-    target_feature = "avx512f"
+    target_feature = "avx512f",
+    not(feature = "gpu")
 ))]
 pub mod avx512;
 #[cfg(all(
     feature = "nightly-features",
     target_arch = "x86_64",
-    target_feature = "avx512f"
+    target_feature = "avx512f",
+    not(feature = "gpu")
 ))]
 pub use avx512::*;
 
 #[cfg(all(
     target_arch = "x86_64",
     target_feature = "avx2",
+    not(feature = "gpu"),
     not(all(feature = "nightly-features", target_feature = "avx512f"))
 ))]
 pub mod avx2;
 #[cfg(all(
     target_arch = "x86_64",
     target_feature = "avx2",
+    not(feature = "gpu"),
     not(all(feature = "nightly-features", target_feature = "avx512f"))
 ))]
 pub use avx2::*;

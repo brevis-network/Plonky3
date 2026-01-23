@@ -29,6 +29,7 @@ pub trait PackedMontyParameters: crate::MontyParametersNeon + MontyParameters {}
 #[cfg(all(
     target_arch = "x86_64",
     target_feature = "avx2",
+    not(feature = "gpu"),
     not(all(feature = "nightly-features", target_feature = "avx512f"))
 ))]
 /// PackedMontyParameters contains constants needed for MONTY operations for packings of Monty31 fields.
@@ -36,7 +37,8 @@ pub trait PackedMontyParameters: crate::MontyParametersAVX2 + MontyParameters {}
 #[cfg(all(
     feature = "nightly-features",
     target_arch = "x86_64",
-    target_feature = "avx512f"
+    target_feature = "avx512f",
+    not(feature = "gpu")
 ))]
 /// PackedMontyParameters contains constants needed for MONTY operations for packings of Monty31 fields.
 pub trait PackedMontyParameters: crate::MontyParametersAVX512 + MontyParameters {}
@@ -45,12 +47,14 @@ pub trait PackedMontyParameters: crate::MontyParametersAVX512 + MontyParameters 
     all(
         target_arch = "x86_64",
         target_feature = "avx2",
+        not(feature = "gpu"),
         not(all(feature = "nightly-features", target_feature = "avx512f"))
     ),
     all(
         feature = "nightly-features",
         target_arch = "x86_64",
-        target_feature = "avx512f"
+        target_feature = "avx512f",
+        not(feature = "gpu")
     ),
 )))]
 /// PackedMontyParameters contains constants needed for MONTY operations for packings of Monty31 fields.

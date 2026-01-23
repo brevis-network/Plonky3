@@ -25,4 +25,5 @@ name = "fft"
 harness = false
 
 [features]
+gpu = ["p3-goldilocks/gpu", "p3-monty-31/gpu", "p3-baby-bear/gpu", "p3-mersenne-31/gpu"]
 nightly-features = ["p3-goldilocks/nightly-features", "p3-monty-31/nightly-features", "p3-baby-bear/nightly-features", "p3-mersenne-31/nightly-features"]

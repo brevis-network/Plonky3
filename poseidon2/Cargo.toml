@@ -5,6 +5,12 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [features]
+gpu = [
+    "p3-koala-bear/gpu",
+    "p3-baby-bear/gpu",
+    "p3-mersenne-31/gpu",
+    "p3-goldilocks/gpu",
+]
 nightly-features = [
     "p3-koala-bear/nightly-features",
     "p3-baby-bear/nightly-features",

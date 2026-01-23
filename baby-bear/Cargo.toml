@@ -5,6 +5,7 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [features]
+gpu = ["p3-monty-31/gpu"]  # Disables AVX2/AVX512 SIMD paths for GPU interop compatibility
 nightly-features = ["p3-monty-31/nightly-features"]
 
 [dependencies]

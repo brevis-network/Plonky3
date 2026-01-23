@@ -24,6 +24,7 @@ pub use poseidon2::*;
 #[cfg(all(
     target_arch = "x86_64",
     target_feature = "avx2",
+    not(feature = "gpu"),
     not(all(feature = "nightly-features", target_feature = "avx512f"))
 ))]
 mod x86_64_avx2;
@@ -31,6 +32,7 @@ mod x86_64_avx2;
 #[cfg(all(
     target_arch = "x86_64",
     target_feature = "avx2",
+    not(feature = "gpu"),
     not(all(feature = "nightly-features", target_feature = "avx512f"))
 ))]
 pub use x86_64_avx2::*;
@@ -38,13 +40,15 @@ pub use x86_64_avx2::*;
 #[cfg(all(
     feature = "nightly-features",
     target_arch = "x86_64",
-    target_feature = "avx512f"
+    target_feature = "avx512f",
+    not(feature = "gpu")
 ))]
 mod x86_64_avx512;
 
 #[cfg(all(
     feature = "nightly-features",
     target_arch = "x86_64",
-    target_feature = "avx512f"
+    target_feature = "avx512f",
+    not(feature = "gpu")
 ))]
 pub use x86_64_avx512::*;
